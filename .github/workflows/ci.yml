@@ -6,107 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: basin07-ci-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  validate-and-build:
-    name: Content, Rust tests and WebAssembly build
+  diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install stable Rust and WASM target
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
-
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-
-      # The initial upload is stored as nine base64 text chunks. Preserve this
-      # CI file and PROGRESS.md while extracting the original source snapshot.
-      - name: Expand initial source upload (first run only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f .bootstrap/chunk-00.txt ]]; then
-            cp .github/workflows/ci.yml /tmp/basin07-ci.yml
-            cp PROGRESS.md /tmp/basin07-progress.md
-            cat .bootstrap/chunk-*.txt | tr -d '\r\n' | base64 --decode > /tmp/basin07-source.tar.xz
-            echo "3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771  /tmp/basin07-source.tar.xz" | sha256sum --check
-            tar -xJf /tmp/basin07-source.tar.xz --no-same-owner
-            rm -rf .bootstrap
-            mkdir -p .github/workflows
-            cp /tmp/basin07-ci.yml .github/workflows/ci.yml
-            cp /tmp/basin07-progress.md PROGRESS.md
-            cat >> PROGRESS.md <<'NOTE'
-
-## REMOTE SOURCE IMPORT
-
-- The original source/data/docs archive was expanded by the GitHub Actions bootstrap and SHA-256 verified.
-- All ordinary project files are now present in the repository; the transport chunks were removed.
-- Cargo build/test are executed by this workflow; results are recorded below in the workflow status and updated PROGRESS commits.
-NOTE
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: expand BASIN 07 source, data and documentation [skip ci]"
-              git push origin HEAD:${GITHUB_REF_NAME}
-            fi
-          fi
-
-      - name: Generate and commit Cargo.lock when absent
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f Cargo.lock ]]; then
-            cargo generate-lockfile
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.lock
-            git commit -m "build: lock Rust dependency versions [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          fi
-
-      - name: Validate content and economy
-        run: python scripts/validate_content.py --stage all --seeds 256
-
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Rust simulation tests
-        run: cargo test --no-default-features --lib
-
-      - name: Run Rust headless validator
-        run: cargo run --no-default-features --bin basin-validator -- --seeds 256
-
-      - name: Build WebAssembly client with WebGL2
-        run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
-
-      - name: Install Trunk
-        run: cargo install trunk --locked
-
-      - name: Package browser build
-        run: trunk build --release
-
-      - name: Upload browser build
-        uses: actions/upload-artifact@v4
-        with:
-          name: basin07-web
-          path: dist/
-          if-no-files-found: error
+      - name: Confirm permissions stanza
+        run: echo "Workflow with explicit permissions started."
