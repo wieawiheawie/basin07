@@ -37,7 +37,9 @@ impl MarketState {
             competitor_supply_t,
             player_supply_t,
             contract_product,
-            contract_target_t: 0.05,
+            // A meaningful but achievable starter order: seed-to-seed variation keeps
+            // the opening contract from being an automatic win or a fixed threshold.
+            contract_target_t: 0.15 * rng.range(0.95, 1.05),
             contract_price_usd_t,
             contract_time_left_minutes: 120.0,
             contract_revision: 1,
@@ -219,8 +221,16 @@ pub fn run_harness(seeds: usize) -> EconomyHarnessReport {
         preset_tonnes += b.sold_t;
         coded_cash += a.closing_cash;
         preset_cash += b.closing_cash;
-        coded_signatures.push((a.sold_t * 100.0) as i64);
-        preset_signatures.push((b.sold_t * 100.0) as i64);
+        coded_signatures.push((
+            (a.sold_t * 10_000.0).round() as i64,
+            (a.closing_cash * 100.0).round() as i64,
+            a.contract,
+        ));
+        preset_signatures.push((
+            (b.sold_t * 10_000.0).round() as i64,
+            (b.closing_cash * 100.0).round() as i64,
+            b.contract,
+        ));
     }
     coded_signatures.sort_unstable();
     coded_signatures.dedup();

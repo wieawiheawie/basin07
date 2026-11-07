@@ -63,7 +63,7 @@
 - Balanced reactions/processes: 5, verified by local Python validator.
 - Declared machine/controller types: 12 (including controller types).
 - Validator: Python DLE and integrated stage PASS (256 seeds per controller); Rust validator NOT RUN; content runtime schema validation NOT YET IMPLEMENTED.
-- Latest Actions run 42370226105: archive SHA/extraction PASS, Cargo.lock generated, Python content/economy validator PASS, rustfmt applied and committed (0b585d11). `cargo test --no-default-features --lib` then failed with three related E0308/E0277 errors in `src/sim/plant.rs:843-844`: f32 stress multiplied by f64 timestep, then compared with f64 RNG. This commit promotes the stress sum to f64 before forming the leak probability. The Rust validator and WASM build have not yet run.
+- Latest Actions run 42370332727: archive bootstrap, content validator, Cargo.lock and rustfmt PASS; Rust crate compiled, but 16/19 unit tests passed. Three behavioural assertions failed: seed outcomes were quantized too coarsely and the opening order was trivial (256/256 both controller paths won); two adsorption tests called the process function without powering the bed/controller, so logic correctly returned default outputs. These are corrected in the current commit by using market-seed starter targets, recording quantity+cash+win signatures, and exercising grid-connected powered controllers through the normal fixed-tick `step()` path.
 
 ## REMOTE SOURCE IMPORT
 
@@ -85,3 +85,12 @@
 
 - Applied rustfmt to all tracked Rust source and tests.
 - Formatting-only changes were committed by the build runner before compile/test steps.
+
+
+## RUST BEHAVIOUR TEST REPAIR
+
+- The opening LiCl order now has a seed-dependent target centered at 0.15 t, instead of the trivially low fixed 0.05 t.
+- Economy run diversity now compares sold quantity, closing cash, and contract result at useful precision, rather than truncating tonnes to 0.01 t.
+- Adsorption tests now connect grid power to both the bed and the code controller and run the ordinary powered plant tick; they no longer bypass the real power interlock by calling a private process method directly.
+- Current CI state before this repair: 16/19 Rust unit tests passed; the three failing behavioural assertions above are the reason for this commit.
+- Next 3 steps: (1) rerun Rust unit tests; (2) fix/verify the headless Rust economy validator; (3) complete the WebAssembly client build and Trunk packaging.

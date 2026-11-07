@@ -1303,6 +1303,18 @@ mod tests {
             LineKind::LogicActuator,
         )
         .unwrap();
+        p.connect(
+            Endpoint::Service(ServicePort::Grid),
+            Endpoint::Machine(bed),
+            LineKind::Power,
+        )
+        .unwrap();
+        p.connect(
+            Endpoint::Service(ServicePort::Grid),
+            Endpoint::Machine(plc),
+            LineKind::Power,
+        )
+        .unwrap();
         p.compile_controller(
             plc,
             "set(\"feed_valve\", 0.0); set(\"wash_valve\", 0.0); set(\"elution_valve\", 1.0);",
@@ -1312,7 +1324,8 @@ mod tests {
         state.bed_loading_t = 0.01;
         state.reagents_t[ReagentId::HydrochloricAcid.index()] = 1.0;
         state.reagents_t[ReagentId::Water.index()] = 1.0;
-        p.process_adsorption(p.machines.iter().position(|m| m.id == bed).unwrap(), 0.25);
+        p.paused = false;
+        p.step(0.25);
         assert!(
             p.machine(bed)
                 .unwrap()
@@ -1347,6 +1360,18 @@ mod tests {
             LineKind::LogicActuator,
         )
         .unwrap();
+        p.connect(
+            Endpoint::Service(ServicePort::Grid),
+            Endpoint::Machine(bed),
+            LineKind::Power,
+        )
+        .unwrap();
+        p.connect(
+            Endpoint::Service(ServicePort::Grid),
+            Endpoint::Machine(plc),
+            LineKind::Power,
+        )
+        .unwrap();
         p.compile_controller(plc, "set(\"elution_valve\", 0.85);")
             .unwrap();
         let state = p.machine_mut(bed).unwrap();
@@ -1356,7 +1381,8 @@ mod tests {
         state.reagents_t[ReagentId::Water.index()] = 1.0;
         state.steam_kwh = 10.0;
         let before_acid = state.reagents_t[ReagentId::HydrochloricAcid.index()];
-        p.process_adsorption(p.machines.iter().position(|m| m.id == bed).unwrap(), 0.25);
+        p.paused = false;
+        p.step(0.25);
         let after = p.machine(bed).unwrap();
         assert!(after.reagents_t[ReagentId::HydrochloricAcid.index()] > before_acid - 0.00045);
         assert!(after.steam_kwh < 10.0);
