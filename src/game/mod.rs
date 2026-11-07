@@ -3,8 +3,11 @@ mod persistence;
 mod render;
 mod ui;
 
+use crate::sim::{
+    catalog::{LineKind, MachineKind, ReagentId},
+    plant::PlantSim,
+};
 use bevy::prelude::*;
-use crate::sim::{catalog::{LineKind, MachineKind, ReagentId}, plant::PlantSim};
 use controls::{handle_input, update_camera};
 use persistence::{load_plant, save_plant};
 use render::{setup_scene, sync_connections, sync_machines};
@@ -27,10 +30,14 @@ pub struct GameSession {
 impl GameSession {
     fn new(seed: u64) -> Self {
         Self {
-            plant: PlantSim::new(seed), mode: GameMode::Title,
-            selected_kind: MachineKind::WellPump, selected_machine: None,
-            selected_line: LineKind::RawBrine, pending_connection: None,
-            selected_reagent: ReagentId::HydrochloricAcid, seed,
+            plant: PlantSim::new(seed),
+            mode: GameMode::Title,
+            selected_kind: MachineKind::WellPump,
+            selected_machine: None,
+            selected_line: LineKind::RawBrine,
+            pending_connection: None,
+            selected_reagent: ReagentId::HydrochloricAcid,
+            seed,
             status_message: "Press SPACE to open the lease and begin.".into(),
             sim_accumulator: 0.0,
         }
@@ -38,7 +45,12 @@ impl GameSession {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GameMode { Title, Playing, Paused, Report }
+pub enum GameMode {
+    Title,
+    Playing,
+    Paused,
+    Report,
+}
 
 #[derive(Resource)]
 pub(crate) struct CameraRig {
@@ -50,7 +62,12 @@ pub(crate) struct CameraRig {
 
 impl Default for CameraRig {
     fn default() -> Self {
-        Self { target: Vec3::new(0.0, 0.0, 0.0), yaw: 0.78, pitch: 0.72, distance: 31.0 }
+        Self {
+            target: Vec3::new(0.0, 0.0, 0.0),
+            yaw: 0.78,
+            pitch: 0.72,
+            distance: 31.0,
+        }
     }
 }
 
@@ -60,19 +77,24 @@ impl Plugin for BasinGamePlugin {
         app.insert_resource(GameSession::new(7_071))
             .init_resource::<CameraRig>()
             .add_systems(Startup, (setup_scene, setup_hud))
-            .add_systems(Update, (
-                handle_input,
-                update_camera,
-                advance_simulation,
-                sync_machines,
-                sync_connections,
-                update_hud,
-            ));
+            .add_systems(
+                Update,
+                (
+                    handle_input,
+                    update_camera,
+                    advance_simulation,
+                    sync_machines,
+                    sync_connections,
+                    update_hud,
+                ),
+            );
     }
 }
 
 fn advance_simulation(time: Res<Time>, mut session: ResMut<GameSession>) {
-    if session.mode != GameMode::Playing || session.plant.paused { return; }
+    if session.mode != GameMode::Playing || session.plant.paused {
+        return;
+    }
     // 4 fixed simulation ticks per real second. Rendering remains independent.
     session.sim_accumulator += time.delta_secs_f64();
     let mut steps = 0;
@@ -82,7 +104,9 @@ fn advance_simulation(time: Res<Time>, mut session: ResMut<GameSession>) {
         steps += 1;
     }
     // Deliberately slow simulation after a tab stall instead of a large catch-up burst.
-    if steps == 8 { session.sim_accumulator = session.sim_accumulator.min(0.25); }
+    if steps == 8 {
+        session.sim_accumulator = session.sim_accumulator.min(0.25);
+    }
     if session.plant.cash <= 0.0 && session.plant.total_products_t() <= 0.0001 {
         session.mode = GameMode::Report;
         session.plant.paused = true;
@@ -108,7 +132,9 @@ pub(crate) fn kind_from_digit(key: KeyCode) -> Option<MachineKind> {
     }
 }
 
-pub(crate) fn save(session: &GameSession) -> Result<(), String> { save_plant(&session.plant) }
+pub(crate) fn save(session: &GameSession) -> Result<(), String> {
+    save_plant(&session.plant)
+}
 pub(crate) fn load(session: &mut GameSession) -> Result<(), String> {
     let plant = load_plant()?;
     session.seed = plant.seed;

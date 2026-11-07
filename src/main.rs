@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use basin07::game::BasinGamePlugin;
+use bevy::prelude::*;
 
 fn run_game() {
     App::new()
@@ -19,8 +19,12 @@ fn run_game() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn main() { run_game(); }
+fn main() {
+    run_game();
+}
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
-pub fn main() { run_game(); }
+pub fn main() {
+    run_game();
+}

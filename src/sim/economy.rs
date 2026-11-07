@@ -1,4 +1,4 @@
-use super::catalog::{ProductId, PRODUCTS, PRODUCT_COUNT};
+use super::catalog::{PRODUCT_COUNT, PRODUCTS, ProductId};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MarketState {
@@ -16,9 +16,8 @@ pub struct MarketState {
 impl MarketState {
     pub fn new(seed: u64) -> Self {
         let mut rng = DeterministicRng::new(seed ^ 0xA53C_91E7_4D2B_6F10);
-        let price_usd_t = std::array::from_fn(|i| {
-            PRODUCTS[i].unit_price_usd_t * rng.range(0.90, 1.10)
-        });
+        let price_usd_t =
+            std::array::from_fn(|i| PRODUCTS[i].unit_price_usd_t * rng.range(0.90, 1.10));
         let demand_t = std::array::from_fn(|i| {
             let base = match ProductId::ALL[i] {
                 ProductId::LiClEluate => 100.0,
@@ -28,9 +27,7 @@ impl MarketState {
             };
             base * rng.range(0.82, 1.18)
         });
-        let competitor_supply_t = std::array::from_fn(|i| {
-            demand_t[i] * rng.range(0.48, 0.92)
-        });
+        let competitor_supply_t = std::array::from_fn(|i| demand_t[i] * rng.range(0.48, 0.92));
         let player_supply_t = [0.0; PRODUCT_COUNT];
         let contract_product = ProductId::LiClEluate;
         let contract_price_usd_t = price_usd_t[contract_product.index()] * 1.12;
@@ -62,14 +59,13 @@ impl MarketState {
             let base = PRODUCTS[i].unit_price_usd_t.max(1.0);
             self.competitor_supply_t[i] =
                 (self.competitor_supply_t[i] + rng.range(-1.8, 2.4)).clamp(1.0, 450.0);
-            self.demand_t[i] =
-                (self.demand_t[i] + rng.range(-2.2, 2.6)).clamp(10.0, 500.0);
-            let scarcity = (self.demand_t[i] - self.competitor_supply_t[i] - self.player_supply_t[i])
-                / self.demand_t[i].max(1.0);
-            self.price_usd_t[i] = (self.price_usd_t[i]
-                + rng.range(-0.025, 0.025) * base
-                + scarcity * base * 0.012)
-                .clamp(base * 0.55, base * 1.65);
+            self.demand_t[i] = (self.demand_t[i] + rng.range(-2.2, 2.6)).clamp(10.0, 500.0);
+            let scarcity =
+                (self.demand_t[i] - self.competitor_supply_t[i] - self.player_supply_t[i])
+                    / self.demand_t[i].max(1.0);
+            self.price_usd_t[i] =
+                (self.price_usd_t[i] + rng.range(-0.025, 0.025) * base + scarcity * base * 0.012)
+                    .clamp(base * 0.55, base * 1.65);
             self.player_supply_t[i] *= 0.985;
         }
     }
@@ -97,12 +93,10 @@ impl MarketState {
     /// quoted premium; non-contract shipments receive the current spot price after impact.
     pub fn sell(&mut self, product: ProductId, tonnes: f64) -> (f64, f64) {
         let i = product.index();
-        let unserved_demand = self.demand_t[i]
-            - self.competitor_supply_t[i] * 0.15
-            - self.player_supply_t[i];
+        let unserved_demand =
+            self.demand_t[i] - self.competitor_supply_t[i] * 0.15 - self.player_supply_t[i];
         let sold = tonnes.max(0.0).min(unserved_demand.max(0.0));
-        let market_price = self.price_usd_t[i]
-            * (1.0 - (sold / self.demand_t[i].max(1.0)) * 0.08);
+        let market_price = self.price_usd_t[i] * (1.0 - (sold / self.demand_t[i].max(1.0)) * 0.08);
         let paid_price = if product == self.contract_product {
             market_price.max(self.contract_price_usd_t)
         } else {
@@ -114,10 +108,14 @@ impl MarketState {
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub struct DeterministicRng { state: u64 }
+pub struct DeterministicRng {
+    state: u64,
+}
 
 impl DeterministicRng {
-    pub fn new(seed: u64) -> Self { Self { state: seed.max(1) } }
+    pub fn new(seed: u64) -> Self {
+        Self { state: seed.max(1) }
+    }
     pub fn next_u64(&mut self) -> u64 {
         // xorshift64*; deterministic and sufficient for simulation variability, not cryptography.
         let mut x = self.state;
@@ -127,8 +125,12 @@ impl DeterministicRng {
         self.state = x;
         x.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
-    pub fn unit(&mut self) -> f64 { (self.next_u64() >> 11) as f64 / ((1_u64 << 53) as f64) }
-    pub fn range(&mut self, min: f64, max: f64) -> f64 { min + (max - min) * self.unit() }
+    pub fn unit(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / ((1_u64 << 53) as f64)
+    }
+    pub fn range(&mut self, min: f64, max: f64) -> f64 {
+        min + (max - min) * self.unit()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -145,7 +147,11 @@ pub struct EconomyHarnessReport {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Trial { sold_t: f64, closing_cash: f64, contract: bool }
+struct Trial {
+    sold_t: f64,
+    closing_cash: f64,
+    contract: bool,
+}
 
 fn trial(seed: u64, coded: bool) -> Trial {
     let mut rng = DeterministicRng::new(seed.wrapping_add(if coded { 0x1142 } else { 0xF00D }));
@@ -187,7 +193,11 @@ fn trial(seed: u64, coded: bool) -> Trial {
     sold_t = market_sold;
     cash += gross;
     cash -= if coded { 18_200.0 } else { 17_000.0 };
-    Trial { sold_t, closing_cash: cash, contract: sold_t >= market.contract_target_t && cash > 0.0 }
+    Trial {
+        sold_t,
+        closing_cash: cash,
+        contract: sold_t >= market.contract_target_t && cash > 0.0,
+    }
 }
 
 pub fn run_harness(seeds: usize) -> EconomyHarnessReport {
@@ -212,16 +222,21 @@ pub fn run_harness(seeds: usize) -> EconomyHarnessReport {
         coded_signatures.push((a.sold_t * 100.0) as i64);
         preset_signatures.push((b.sold_t * 100.0) as i64);
     }
-    coded_signatures.sort_unstable(); coded_signatures.dedup();
-    preset_signatures.sort_unstable(); preset_signatures.dedup();
+    coded_signatures.sort_unstable();
+    coded_signatures.dedup();
+    preset_signatures.sort_unstable();
+    preset_signatures.dedup();
     EconomyHarnessReport {
-        runs, coded_wins, preset_wins,
+        runs,
+        coded_wins,
+        preset_wins,
         coded_mean_tonnes: coded_tonnes / runs as f64,
         preset_mean_tonnes: preset_tonnes / runs as f64,
         coded_mean_cash: coded_cash / runs as f64,
         preset_mean_cash: preset_cash / runs as f64,
         both_paths_viable: coded_wins >= runs * 3 / 5 && preset_wins >= runs * 3 / 5,
-        outcomes_vary: coded_signatures.len() >= runs * 3 / 4 && preset_signatures.len() >= runs * 3 / 4,
+        outcomes_vary: coded_signatures.len() >= runs * 3 / 4
+            && preset_signatures.len() >= runs * 3 / 4,
     }
 }
 
@@ -234,7 +249,10 @@ mod tests {
         let report = run_harness(256);
         assert!(report.both_paths_viable, "{report:?}");
         assert!(report.outcomes_vary, "{report:?}");
-        assert!(report.coded_mean_tonnes > report.preset_mean_tonnes, "{report:?}");
+        assert!(
+            report.coded_mean_tonnes > report.preset_mean_tonnes,
+            "{report:?}"
+        );
     }
 
     #[test]
@@ -250,7 +268,11 @@ mod tests {
                 assert!((base * 0.55..=base * 1.65).contains(&market.price_usd_t[i]));
             }
         }
-        assert!(ProductId::ALL.iter().all(|p| market.price_for(*p) != initial[p.index()]));
+        assert!(
+            ProductId::ALL
+                .iter()
+                .all(|p| market.price_for(*p) != initial[p.index()])
+        );
     }
 
     #[test]

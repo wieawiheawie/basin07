@@ -70,3 +70,8 @@
 - The original source/data/docs archive was expanded by GitHub Actions and SHA-256 verified.
 - All ordinary project files are now present; temporary transport chunks were removed.
 - Cargo build/test results are recorded in this tracker and the workflow run.
+
+## RUST FORMAT REPAIR
+
+- Applied rustfmt to all tracked Rust source and tests.
+- Formatting-only changes were committed by the build runner before compile/test steps.

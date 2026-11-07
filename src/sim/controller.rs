@@ -1,5 +1,8 @@
-use std::{collections::BTreeMap, sync::{Arc, RwLock}};
 use rhai::{AST, Engine, EvalAltResult};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, RwLock},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct ControlOutputs {
@@ -7,7 +10,9 @@ pub struct ControlOutputs {
     pub alarms: Vec<String>,
 }
 impl ControlOutputs {
-    pub fn value(&self, name: &str, fallback: f64) -> f64 { self.values.get(name).copied().unwrap_or(fallback) }
+    pub fn value(&self, name: &str, fallback: f64) -> f64 {
+        self.values.get(name).copied().unwrap_or(fallback)
+    }
 }
 
 pub struct ScriptController {
@@ -47,28 +52,65 @@ impl ScriptController {
 
         let sensor_ref = Arc::clone(&sensors);
         engine.register_fn("read", move |name: &str| -> f64 {
-            sensor_ref.read().unwrap_or_else(|e| e.into_inner()).get(name).copied().unwrap_or(0.0)
+            sensor_ref
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(name)
+                .copied()
+                .unwrap_or(0.0)
         });
         let output_ref = Arc::clone(&outputs);
         engine.register_fn("set", move |name: &str, value: f64| {
             // Actuator writes are setpoints. The plant solver still enforces physical limits.
-            output_ref.write().unwrap_or_else(|e| e.into_inner()).insert(name.to_owned(), value.clamp(0.0, 1.0));
+            output_ref
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(name.to_owned(), value.clamp(0.0, 1.0));
         });
         let alarm_ref = Arc::clone(&alarms);
         engine.register_fn("alarm", move |code: &str| {
             let mut list = alarm_ref.write().unwrap_or_else(|e| e.into_inner());
-            if list.len() < 8 && !list.iter().any(|x| x == code) { list.push(code.to_owned()); }
+            if list.len() < 8 && !list.iter().any(|x| x == code) {
+                list.push(code.to_owned());
+            }
         });
-        let ast = engine.compile(source).map_err(|e| format!("compile: {e}"))?;
-        Ok(Self { engine, ast, sensors, outputs, alarms })
+        let ast = engine
+            .compile(source)
+            .map_err(|e| format!("compile: {e}"))?;
+        Ok(Self {
+            engine,
+            ast,
+            sensors,
+            outputs,
+            alarms,
+        })
     }
 
     pub fn run(&mut self, sensors: &BTreeMap<String, f64>) -> Result<ControlOutputs, String> {
         *self.sensors.write().unwrap_or_else(|e| e.into_inner()) = sensors.clone();
-        self.outputs.write().unwrap_or_else(|e| e.into_inner()).clear();
-        self.alarms.write().unwrap_or_else(|e| e.into_inner()).clear();
-        self.engine.run_ast(&self.ast).map_err(|e: Box<EvalAltResult>| format!("runtime: {e}"))?;
-        Ok(ControlOutputs { values: self.outputs.read().unwrap_or_else(|e| e.into_inner()).clone(), alarms: self.alarms.read().unwrap_or_else(|e| e.into_inner()).clone() })
+        self.outputs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.alarms
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.engine
+            .run_ast(&self.ast)
+            .map_err(|e: Box<EvalAltResult>| format!("runtime: {e}"))?;
+        Ok(ControlOutputs {
+            values: self
+                .outputs
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+            alarms: self
+                .alarms
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+        })
     }
 }
 
@@ -78,11 +120,33 @@ impl PresetController {
     pub fn tick(&self, breakthrough: f64, tank_level: f64, bed_loading: f64) -> ControlOutputs {
         let mut out = ControlOutputs::default();
         let change_cycle = breakthrough > 0.12 || bed_loading > 0.72;
-        out.values.insert("feed_valve".into(), if change_cycle { 0.0 } else if tank_level < 0.92 { 0.86 } else { 0.35 });
-        out.values.insert("wash_valve".into(), if change_cycle { 0.42 } else { 0.0 });
-        out.values.insert("elution_valve".into(), if change_cycle && tank_level > 0.10 { 0.72 } else { 0.0 });
-        out.values.insert("well_pump".into(), if tank_level < 0.88 { 0.86 } else { 0.45 });
-        if breakthrough > 0.12 { out.alarms.push("PRESET_BREAKTHROUGH".into()); }
+        out.values.insert(
+            "feed_valve".into(),
+            if change_cycle {
+                0.0
+            } else if tank_level < 0.92 {
+                0.86
+            } else {
+                0.35
+            },
+        );
+        out.values
+            .insert("wash_valve".into(), if change_cycle { 0.42 } else { 0.0 });
+        out.values.insert(
+            "elution_valve".into(),
+            if change_cycle && tank_level > 0.10 {
+                0.72
+            } else {
+                0.0
+            },
+        );
+        out.values.insert(
+            "well_pump".into(),
+            if tank_level < 0.88 { 0.86 } else { 0.45 },
+        );
+        if breakthrough > 0.12 {
+            out.alarms.push("PRESET_BREAKTHROUGH".into());
+        }
         out
     }
 }
@@ -105,18 +169,24 @@ if read("feed_tank.level") < 0.25 { set("well_pump", 0.75); }
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn script_reads_sensors_and_sets_bounded_actuators() {
-        let mut vm = ScriptController::compile("set(\"feed_valve\", read(\"bed.breakthrough\") * 10.0);").unwrap();
-        let mut sensors = BTreeMap::new(); sensors.insert("bed.breakthrough".into(), 0.3);
+    #[test]
+    fn script_reads_sensors_and_sets_bounded_actuators() {
+        let mut vm =
+            ScriptController::compile("set(\"feed_valve\", read(\"bed.breakthrough\") * 10.0);")
+                .unwrap();
+        let mut sensors = BTreeMap::new();
+        sensors.insert("bed.breakthrough".into(), 0.3);
         let out = vm.run(&sensors).unwrap();
         assert_eq!(out.value("feed_valve", -1.0), 1.0);
     }
-    #[test] fn preset_emits_safe_cycle_when_breakthrough_is_high() {
+    #[test]
+    fn preset_emits_safe_cycle_when_breakthrough_is_high() {
         let out = PresetController.tick(0.2, 0.8, 0.9);
         assert_eq!(out.value("feed_valve", 1.0), 0.0);
         assert!(out.alarms.contains(&"PRESET_BREAKTHROUGH".into()));
     }
-    #[test] fn runaway_script_is_bounded() {
+    #[test]
+    fn runaway_script_is_bounded() {
         let mut vm = ScriptController::compile("loop { let x = 1 + 1; }").unwrap();
         let err = vm.run(&BTreeMap::new()).unwrap_err();
         assert!(err.contains("runtime"));
