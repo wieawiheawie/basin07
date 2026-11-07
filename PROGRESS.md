@@ -65,3 +65,8 @@ The CI workflow runs steps 2–8 (Trunk is installed in the runner before packag
 - Browser bundler: Trunk.
 - Controller language: Rhai with a whitelisted sensor/actuator API, disabled module imports, and operation/call-depth limits.
 - Content direction: JSON + Serde, with JSON Schema validation planned after the current build/test gates.
+
+## RUST FORMAT REPAIR
+
+- Applied rustfmt to all tracked Rust source and tests.
+- Formatting-only changes were committed by the build runner before compile/test steps.

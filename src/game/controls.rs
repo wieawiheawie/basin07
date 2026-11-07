@@ -91,8 +91,10 @@ pub fn handle_input(
         if let Some(id) = selected {
             match session.plant.buy_reagent(id, session.selected_reagent, 0.5) {
                 Ok(()) => {
-                    session.status_message =
-                        format!("Ordered 0.5 t {}", crate::sim::catalog::REAGENTS[session.selected_reagent.index()].name)
+                    session.status_message = format!(
+                        "Ordered 0.5 t {}",
+                        crate::sim::catalog::REAGENTS[session.selected_reagent.index()].name
+                    )
                 }
                 Err(err) => session.status_message = err,
             }
