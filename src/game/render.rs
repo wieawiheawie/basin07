@@ -138,7 +138,7 @@ pub fn sync_machines(
     mut existing: Query<(
         &MachineVisual,
         &mut Transform,
-        &mut MeshMaterial3d<StandardMaterial>,
+        MeshMaterial3d<StandardMaterial>,
     )>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -184,14 +184,14 @@ pub fn sync_machines(
             registry.machine_entities.insert(machine.id, entity);
             entity
         };
-        if let Ok((visual, mut transform, mut material)) = existing.get_mut(entity) {
+        if let Ok((visual, mut transform, material)) = existing.get_mut(entity) {
             let _id = visual.0;
             transform.translation = Vec3::new(
                 tile_x(machine.pos.x as i32),
                 0.65,
                 tile_z(machine.pos.z as i32),
             );
-            if let Some(mat) = materials.get_mut(&material.0) {
+            if let Some(mut mat) = materials.get_mut(&material.0) {
                 mat.base_color = if session.selected_machine == Some(machine.id) {
                     Color::srgb(0.96, 0.77, 0.25)
                 } else if machine.alarm.is_some() {
@@ -281,7 +281,7 @@ pub fn sync_connections(
             } else {
                 line_color(connection.line)
             };
-            if let Some(material) = materials.get_mut(&material_handle.0) {
+            if let Some(mut material) = materials.get_mut(&material_handle.0) {
                 material.base_color = color;
                 material.emissive = if connection.leak_fraction > 0.0 {
                     color.into()
