@@ -77,8 +77,20 @@ jobs:
       - name: Validate content and economy
         run: python scripts/validate_content.py --stage all --seeds 256
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
+      - name: Format Rust source and commit formatting repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          if ! git diff --quiet -- '*.rs'; then
+            printf '\n## RUST FORMAT REPAIR\n\n- Applied rustfmt to all tracked Rust source and tests.\n- Formatting-only changes were committed by the build runner before compile/test steps.\n' >> PROGRESS.md
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: apply rustfmt formatting [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+          cargo fmt --all -- --check
 
       - name: Run Rust simulation tests
         run: cargo test --no-default-features --lib

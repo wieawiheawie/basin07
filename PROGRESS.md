@@ -31,7 +31,7 @@
 ## IN PROGRESS
 
 1. Open/rebuild the Codespace using .devcontainer/devcontainer.json; allow .devcontainer/bootstrap.sh to verify, expand, commit and push the source tree.
-2. Inspect the new push-triggered GitHub Actions run and fix Rust formatting, tests, validator, WASM build and Trunk errors one at a time; update this file at every commit.
+2. Apply rustfmt as a dedicated auto-committed source-formatting repair, then inspect and fix Rust tests, validator, WASM build and Trunk errors one at a time; update this file at every commit.
 3. Once CI passes, run the client with trunk serve --open and verify basic placement/network/controller/selling flows in the forwarded browser port.
 
 ## KNOWN ISSUES
@@ -63,6 +63,7 @@
 - Balanced reactions/processes: 5, verified by local Python validator.
 - Declared machine/controller types: 12 (including controller types).
 - Validator: Python DLE and integrated stage PASS (256 seeds per controller); Rust validator NOT RUN; content runtime schema validation NOT YET IMPLEMENTED.
+- Latest Actions run 42370146372: archive SHA and extraction PASS, Cargo.lock generated, Python content/economy validator PASS. `cargo fmt --all -- --check` FAILED because the source snapshot was not rustfmt-formatted; Rust tests, Rust validator and WASM build were skipped.
 
 ## REMOTE SOURCE IMPORT
 
