@@ -1,0 +1,108 @@
+name: BASIN 07 CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Do not cancel the bootstrap run when it pushes generated source/lock files.
+concurrency:
+  group: basin07-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-build:
+    name: Content, Rust tests and WebAssembly build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install stable Rust and WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # The source archive is uploaded as text chunks because this session has
+      # GitHub API access but no terminal attached to the authenticated Codespace.
+      - name: Expand initial source upload (first run only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f .bootstrap/chunk-00.txt ]]; then
+            cat .bootstrap/chunk-*.txt | tr -d '\r\n' | base64 --decode > /tmp/basin07-source.tar.xz
+            echo "3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771  /tmp/basin07-source.tar.xz" | sha256sum --check
+            tar -xJf /tmp/basin07-source.tar.xz --no-same-owner
+            rm -rf .bootstrap
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: expand BASIN 07 source, data and documentation [skip ci]"
+              git push origin HEAD:${GITHUB_REF_NAME}
+            fi
+          fi
+
+      - name: Generate and commit Cargo.lock when absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f Cargo.lock ]]; then
+            cargo generate-lockfile
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "build: lock Rust dependency versions [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
+      - name: Validate content and economy
+        run: python scripts/validate_content.py --stage all --seeds 256
+
+      - name: Format Rust source and commit formatting repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          if ! git diff --quiet -- '*.rs'; then
+            cat >> PROGRESS.md <<'NOTE'
+
+- CI formatting repair: `cargo fmt --all` normalized Rust source; formatting change committed automatically by the Rust toolchain runner.
+NOTE
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: format BASIN 07 Rust source [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+          cargo fmt --all -- --check
+
+      - name: Run Rust simulation tests
+        run: cargo test --no-default-features --lib
+
+      - name: Run Rust headless validator
+        run: cargo run --no-default-features --bin basin-validator -- --seeds 256
+
+      - name: Build WebAssembly client with WebGL2
+        run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
+
+      - name: Install Trunk
+        run: cargo install trunk --locked
+
+      - name: Package browser build
+        run: trunk build --release
