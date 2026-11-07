@@ -1,7 +1,8 @@
 use super::{CameraRig, GameMode, GameSession, kind_from_digit};
 use crate::sim::catalog::{Endpoint, LineKind, MachineKind, ReagentId, ServicePort};
-use crate::sim::network::{GridPos, endpoint_position};
+use crate::sim::network::GridPos;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 pub fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -91,7 +92,7 @@ pub fn handle_input(
             match session.plant.buy_reagent(id, session.selected_reagent, 0.5) {
                 Ok(()) => {
                     session.status_message =
-                        format!("Ordered 0.5 t {}", session.selected_reagent.name())
+                        format!("Ordered 0.5 t {}", crate::sim::catalog::REAGENTS[session.selected_reagent.index()].name)
                 }
                 Err(err) => session.status_message = err,
             }
@@ -117,7 +118,7 @@ pub fn handle_input(
     if keyboard.just_pressed(KeyCode::Enter) {
         if let Some(id) = session.selected_machine {
             match session.plant.sell_product_tank(id) {
-                Ok(gross) => session.status_message = format!("Dispatch completed: ${gross:,.0}"),
+                Ok(gross) => session.status_message = format!("Dispatch completed: ${gross:.0}"),
                 Err(err) => session.status_message = err,
             }
         } else {
