@@ -1,96 +1,67 @@
 # BASIN 07 — Progress Tracker
 
-> Resume first: read this file, inspect the latest git log, then run the build. Do not repeat completed work.
+> Read this file and inspect the latest git log before continuing. Do not repeat completed work.
 
-## CURRENT STATE
+## Current status — 2026-11-07
 
-- Repository: https://github.com/wieawiheawie/basin07 (public, branch main).
-- The full source snapshot is currently committed as a SHA-256-verified compressed archive split across .bootstrap/chunk-00.txt through chunk-08.txt. The normal source tree has not yet been expanded on the remote branch.
-- .devcontainer/devcontainer.json and .devcontainer/bootstrap.sh are committed. Rebuild/create the Codespace with this devcontainer; its post-create hook expands the archive, commits the normal source tree, pushes to main, installs wasm32-unknown-unknown and Trunk.
-- Local source snapshot: /mnt/data/basin07. Local Python content validator passed DLE and integrated two-sector stages (256 seeds/controller path).
-- Rust build/test has NOT been executed. This assistant cannot access a terminal in the authenticated Codespace. The first GitHub Actions run failed before creating a job (run 42369736730, zero jobs and no job logs), so it provides no Rust compiler result.
-- Exact bootstrap command if post-create did not run: bash .devcontainer/bootstrap.sh
-- After bootstrap, run from the repo root:
-  - python3 scripts/validate_content.py --stage all --seeds 256
-  - cargo fmt --all -- --check
-  - cargo test --no-default-features --lib
-  - cargo run --no-default-features --bin basin-validator -- --seeds 256
-  - cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
-  - trunk serve --open
+- Repository: https://github.com/wieawiheawie/basin07, branch `main`.
+- Normal source tree, data, docs, Python validator, Cargo manifest and lockfile are present on `main`. The temporary nine-chunk transport archive was SHA-256 verified and removed by GitHub Actions.
+- This session cannot open the user's authenticated Codespace terminal. GitHub Actions is being used as the remote build environment.
+- Latest verified code commit before this documentation update: `db4b2def706fee4f9021372d138e11eb6facb8cd` (seeded economy and powered adsorption test repairs).
+- Latest relevant CI run: [42370602681](https://github.com/wieawiheawie/basin07/actions/runs/42370602681), testing commit `db4b2def706fee4f9021372d138e11eb6facb8cd`.
+- **PASS:** archive extraction and checksum, Cargo.lock generation, Python content/economy validator, rustfmt, `cargo test --no-default-features --lib`, and `cargo run --no-default-features --bin basin-validator -- --seeds 256`.
+- The Rust unit suite has 19 tests; all tests passed in this run.
+- **IN PROGRESS at last check:** `cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07`.
+- Trunk install, `trunk build --release`, browser artifact upload, warning review and runtime/browser smoke test have not yet been confirmed. Do not call BASIN 07 playable yet.
+- The CI run's current step is the WebAssembly compile. Logs are only available after the job finishes, so warnings from that step cannot yet be reviewed.
 
-## DONE
+## Exact commands
 
-- [x] Initial BASIN 07 source, data, and docs snapshot prepared and archived; SHA-256 3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771.
-- [x] Nine transport chunks committed (source archive) and verified against the expected SHA-256 by the Codespace bootstrap script.
-- [x] Codespaces devcontainer and bootstrap script committed; Rust, rustfmt, clippy, WebAssembly target and Trunk provisioned by post-create.
-- [x] CI workflow was created and first run observed; it failed with zero jobs before execution, not a compile/test failure.
-- [x] Local Python content validator passed: 10 products, 2 connected sectors, 5 balanced reactions, 512 seeded controller-path runs.
-- [ ] Expand the transport archive into the normal source tree on main (post-create bootstrap).
-- [ ] Obtain a genuine GitHub Actions run with jobs; then fix each compile/test failure in a separate commit.
+Run from the repository root after Codespaces post-create setup:
 
-## IN PROGRESS
+1. `bash .devcontainer/bootstrap.sh` — only if initial source extraction/toolchain setup did not run.
+2. `python3 scripts/validate_content.py --stage all --seeds 256`
+3. `cargo fmt --all -- --check`
+4. `cargo test --no-default-features --lib`
+5. `cargo run --no-default-features --bin basin-validator -- --seeds 256`
+6. `cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07`
+7. `cargo install trunk --locked`
+8. `trunk build --release`
+9. `trunk serve --open` — browser/runtime smoke test on port 8080.
 
-1. Open/rebuild the Codespace using .devcontainer/devcontainer.json; allow .devcontainer/bootstrap.sh to verify, expand, commit and push the source tree.
-2. Apply rustfmt as a dedicated auto-committed source-formatting repair, then inspect and fix Rust tests, validator, WASM build and Trunk errors one at a time; update this file at every commit.
-3. Once CI passes, run the client with trunk serve --open and verify basic placement/network/controller/selling flows in the forwarded browser port.
+The CI workflow runs steps 2–8 (Trunk is installed in the runner before packaging). It also uploads the `dist/` output as the `basin07-web` artifact on success.
 
-## KNOWN ISSUES
+## Completed
 
-- No Rust compiler result yet: cargo build, cargo test, rustfmt, clippy, headless Rust validator, WASM build and Trunk packaging remain unverified.
-- One previous Actions run (42369736730) is completed failure with zero jobs and no logs. The available connected GitHub API did not allow dispatching a workflow or opening a terminal in the user's Codespace; a Codespace git push is needed to trigger the regular CI workflow.
-- The full Rust client/simulation has not been proven runnable in a browser. Do not describe it as playable until the WASM build and browser runtime are tested.
-- The runtime catalog migration remains incomplete: JSON definitions are validated by Python, but Rust still contains hard-coded starter enums/recipes.
-- DLE selectivity, adsorption/regeneration, silica scaling, reservoir decline, hydraulic losses and market dynamics are simplified models, not a full chemical-process simulator.
+- [x] BASIN 07 source, assets/data, documentation and validator committed to this repository.
+- [x] Temporary archive expanded; SHA-256 verified against `3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771`.
+- [x] `.github/workflows/ci.yml` added. Pushes to `main` run validation, formatting, unit tests, Rust headless validator, WASM build and Trunk packaging.
+- [x] `.devcontainer/devcontainer.json` and `.devcontainer/bootstrap.sh` added. New Codespaces install stable Rust, rustfmt, clippy, `wasm32-unknown-unknown`, and Trunk.
+- [x] Rust formatting repaired and committed by CI as `9d1f75bcda61901f91d05897e18319b341bb4723`.
+- [x] Leak probability numeric mismatch repaired in `src/sim/plant.rs` by promoting the stress sum from f32 to f64 (commit `db05fe3dc062545d1a642ed0d3614b1e10548b5c`).
+- [x] Economy trial diversity/contract threshold corrected and adsorption unit tests updated to use powered controller links and normal fixed-tick processing (commit `db4b2def706fee4f9021372d138e11eb6facb8cd`).
+- [x] Latest CI run reports all 19 Rust unit tests PASS.
+- [x] Latest CI run reports Rust headless validator PASS.
+- [x] Python content validator PASS: 10 marketable products, 2 connected sectors, 5 atom-balanced reactions, and 512 seeded controller-path runs (256 seeds per control path).
+
+## Remaining work
+
+1. Wait for the current WebAssembly build step to report success/failure; inspect the job logs for compiler errors and warnings.
+2. If WASM fails, repair the cause in a separate source/CI commit and update this tracker in the same commit. Keep memory bounded for the 8 GiB target.
+3. After WASM passes, verify Trunk install and `trunk build --release`; fix errors/warnings and commit each repair.
+4. Confirm a successful `basin07-web` artifact, then run `trunk serve --open` in Codespaces and smoke-test the actual browser runtime. The assistant cannot use the authenticated Codespace terminal directly, so this last smoke test requires the user's Codespace session unless a suitable remote runner is added.
+
+## Known modelling limitations (not build blockers)
+
+- The JSON catalogue is validated by Python, but the runtime catalog still contains hard-coded starter enums/recipes; the data migration is incomplete.
+- DLE selectivity, adsorption/regeneration, silica scaling, reservoir decline, hydraulic losses and market dynamics are simplified simulation models, not a full chemical-process simulator.
 - Soda ash, hydrated lime, magnesium chloride and process water are imported inputs in the starter slice.
-- Economy balance is preliminary; broader exploit and strategy coverage remains.
+- Economy balance is preliminary and needs broader exploit/strategy coverage.
 
-## DECISIONS LOG
+## Decisions
 
-- 2026-11-07 — Industry: geothermal direct lithium extraction, selected for its brine coproducts, reagent use, adsorption/regeneration chemistry and reinjection/water constraints.
-- 2026-11-07 — Initial content gate: 10 saleable products in DLE/battery materials and basic inorganic chemicals, with shared NaCl and recovered heat links.
-- 2026-11-07 — Renderer: Bevy 0.20.1 compiled to WASM; WebGL2 is the primary compatibility build; WebGPU is a separate feature build, not an assumed runtime fallback.
-- 2026-11-07 — Browser bundler: Trunk.
-- 2026-11-07 — Controller language: Rhai with whitelisted sensor/actuator API, disabled module imports and operation/call-depth limits; preset controllers remain less efficient but viable.
-- 2026-11-07 — Content authoring direction: JSON + Serde, later gated with JSON Schema; the first slice is not yet fully runtime-data-driven.
-- 2026-11-07 — Remote build environment: use GitHub Actions and a Codespaces post-create bootstrap because this assistant cannot use the browser-authenticated Codespace terminal directly.
-- 2026-11-07 — Source transport: nine base64 text chunks are concatenated, SHA-256 checked, extracted, and removed by .devcontainer/bootstrap.sh.
-
-## CONTENT COUNT
-
-- Marketable products: 10.
-- Sectors: 2 — DLE/battery materials (5) and basic inorganic chemicals (5).
-- Imported reagents/utilities: 7.
-- Balanced reactions/processes: 5, verified by local Python validator.
-- Declared machine/controller types: 12 (including controller types).
-- Validator: Python DLE and integrated stage PASS (256 seeds per controller); Rust validator NOT RUN; content runtime schema validation NOT YET IMPLEMENTED.
-- Latest Actions run 42370332727: archive bootstrap, content validator, Cargo.lock and rustfmt PASS; Rust crate compiled, but 16/19 unit tests passed. Three behavioural assertions failed: seed outcomes were quantized too coarsely and the opening order was trivial (256/256 both controller paths won); two adsorption tests called the process function without powering the bed/controller, so logic correctly returned default outputs. These are corrected in the current commit by using market-seed starter targets, recording quantity+cash+win signatures, and exercising grid-connected powered controllers through the normal fixed-tick `step()` path.
-
-## REMOTE SOURCE IMPORT
-
-- The original source/data/docs archive was expanded by GitHub Actions and SHA-256 verified.
-- All ordinary project files are now present; temporary transport chunks were removed.
-- Cargo build/test results are recorded in this tracker and the workflow run.
-
-## RUST FORMAT REPAIR
-
-- Applied rustfmt to all tracked Rust source and tests.
-- Formatting-only changes were committed by the build runner before compile/test steps.
-
-## RUST TYPE REPAIR
-
-- Corrected the leak-probability calculation to promote f32 stress to f64 before multiplying by the f64 fixed timestep and comparing with the f64 RNG sample.
-- Next: rerun cargo tests; then the headless Rust validator; then the WebAssembly build and Trunk package.
-
-## RUST FORMAT REPAIR
-
-- Applied rustfmt to all tracked Rust source and tests.
-- Formatting-only changes were committed by the build runner before compile/test steps.
-
-
-## RUST BEHAVIOUR TEST REPAIR
-
-- The opening LiCl order now has a seed-dependent target centered at 0.15 t, instead of the trivially low fixed 0.05 t.
-- Economy run diversity now compares sold quantity, closing cash, and contract result at useful precision, rather than truncating tonnes to 0.01 t.
-- Adsorption tests now connect grid power to both the bed and the code controller and run the ordinary powered plant tick; they no longer bypass the real power interlock by calling a private process method directly.
-- Current CI state before this repair: 16/19 Rust unit tests passed; the three failing behavioural assertions above are the reason for this commit.
-- Next 3 steps: (1) rerun Rust unit tests; (2) fix/verify the headless Rust economy validator; (3) complete the WebAssembly client build and Trunk packaging.
+- Industry: geothermal direct lithium extraction, with brine coproducts, reagent consumption, adsorption/regeneration, and reinjection/water constraints.
+- Renderer: Bevy 0.20.1, compiled to WASM. WebGL2 is the primary compatibility build; WebGPU remains a separate feature build.
+- Browser bundler: Trunk.
+- Controller language: Rhai with a whitelisted sensor/actuator API, disabled module imports, and operation/call-depth limits.
+- Content direction: JSON + Serde, with JSON Schema validation planned after the current build/test gates.
