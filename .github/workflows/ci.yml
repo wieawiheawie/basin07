@@ -8,11 +8,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: basin07-ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   diagnostic:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Confirm write permissions stanza
-        run: echo "Workflow with contents write started."
+      - name: Confirm concurrency stanza
+        run: echo "Workflow with concurrency started."
