@@ -63,3 +63,9 @@
 - Balanced reactions/processes: 5, verified by local Python validator.
 - Declared machine/controller types: 12 (including controller types).
 - Validator: Python DLE and integrated stage PASS (256 seeds per controller); Rust validator NOT RUN; content runtime schema validation NOT YET IMPLEMENTED.
+
+## REMOTE SOURCE IMPORT
+
+- The original source/data/docs archive was expanded by GitHub Actions and SHA-256 verified.
+- All ordinary project files are now present; temporary transport chunks were removed.
+- Cargo build/test results are recorded in this tracker and the workflow run.

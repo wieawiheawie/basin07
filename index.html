@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101a22" />
+    <title>BASIN 07 — Geothermal Lithium Works</title>
+    <link data-trunk rel="rust" data-bin="basin07" data-wasm-opt="s" />
+    <style>
+      :root { color-scheme: dark; background: #101a22; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101a22; }
+      body { display: grid; place-items: stretch; }
+      #basin-canvas { width: 100%; height: 100%; display: block; outline: none; }
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #dce7e8; pointer-events: none; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; opacity: 0; }
+      #controller-panel { position: fixed; right: 14px; bottom: 14px; width: min(420px, 42vw); color: #d7e2e1; background: rgba(7,18,24,.94); border: 1px solid rgba(150,190,190,.22); border-radius: 10px; padding: 10px; font-size: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+      #controller-panel label { display: block; margin-bottom: 6px; color: #d6b86b; letter-spacing: .08em; text-transform: uppercase; }
+      #controller-code { width: 100%; height: 138px; resize: vertical; color: #d9f2e7; background: #0b1519; border: 1px solid #34484b; border-radius: 6px; padding: 9px; font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      #controller-help { color: #97a9a7; margin-top: 6px; line-height: 1.45; }
+      @media (max-width: 900px) { #controller-panel { width: 48vw; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="basin-canvas" tabindex="0"></canvas>
+    <div id="loading">BASIN 07 · geothermal process works</div>
+    <section id="controller-panel">
+      <label for="controller-code">Rhai controller editor</label>
+      <textarea id="controller-code" spellcheck="false">if read("bed.breakthrough") &gt; 0.12 || read("bed.loading") &gt; 0.72 {
+    set("feed_valve", 0.0);
+    set("wash_valve", 0.55);
+    set("elution_valve", 0.85);
+} else {
+    set("feed_valve", 1.0);
+    set("wash_valve", 0.0);
+    set("elution_valve", 0.0);
+}</textarea>
+      <div id="controller-help">Select a Code Controller (F2, then place/select it), connect Logic Sensor and Logic Actuator cables (F3 to cycle), then press F7 to compile. Only sensor reads, bounded actuator setpoints and alarms are exposed.</div>
+    </section>
+  </body>
+</html>

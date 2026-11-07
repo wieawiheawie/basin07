@@ -1,0 +1,112 @@
+[
+  {
+    "id": "licl_eluate",
+    "name": "Lithium chloride eluate",
+    "sector": "DLE & battery materials",
+    "unit": "t",
+    "reference_price": 7800,
+    "hazard": "low",
+    "cheap_easy": true,
+    "description": "A saleable intermediate containing concentrated lithium chloride after adsorption, washing and acid elution.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "lithium_carbonate",
+    "name": "Lithium carbonate",
+    "sector": "DLE & battery materials",
+    "unit": "t",
+    "reference_price": 15600,
+    "hazard": "moderate",
+    "cheap_easy": false,
+    "description": "A refined lithium salt precipitated from eluate with soda ash; sodium chloride is produced as a coproduct.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "lithium_hydroxide_monohydrate",
+    "name": "Lithium hydroxide monohydrate",
+    "sector": "DLE & battery materials",
+    "unit": "t",
+    "reference_price": 21200,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "A higher-value battery chemical made by causticising lithium carbonate with hydrated lime; hot caustic service requires containment.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "magnesium_hydroxide",
+    "name": "Magnesium hydroxide cake",
+    "sector": "DLE & battery materials",
+    "unit": "t",
+    "reference_price": 340,
+    "hazard": "low",
+    "cheap_easy": true,
+    "description": "A low-value mineral cake recovered during brine pretreatment; sale requires an assay within the buyer's impurity limits.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "calcium_carbonate",
+    "name": "Calcium carbonate cake",
+    "sector": "DLE & battery materials",
+    "unit": "t",
+    "reference_price": 220,
+    "hazard": "low",
+    "cheap_easy": true,
+    "description": "A low-value mineral coproduct from lithium hydroxide conversion, suitable for mineral filler or neutralisation markets.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "sodium_chloride",
+    "name": "Industrial sodium chloride",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 160,
+    "hazard": "low",
+    "cheap_easy": true,
+    "description": "A coproduct of lithium carbonate precipitation and magnesium removal; washed salt can feed a chlor-alkali cell.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "sodium_hydroxide",
+    "name": "Sodium hydroxide solution",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 720,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Caustic coproduct from brine electrolysis; used in pretreatment and magnesium precipitation.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "chlorine_gas",
+    "name": "Chlorine gas",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 1150,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Toxic chlor-alkali coproduct; sale requires a gas-tight line, scrubber and safety interlocks.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "hydrogen_gas",
+    "name": "Hydrogen gas",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 1650,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Flammable chlor-alkali coproduct; route to acid synthesis or a certified gas holder.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "hydrochloric_acid",
+    "name": "Hydrochloric acid",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 880,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Produced by controlled synthesis of hydrogen and chlorine; used to elute the loaded DLE sorbent.",
+    "price_unit": "USD/t"
+  }
+]

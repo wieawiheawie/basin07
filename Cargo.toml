@@ -1,0 +1,48 @@
+[package]
+name = "basin07"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+description = "A real-time 3D geothermal DLE factory simulation for the browser"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "basin07"
+path = "src/main.rs"
+required-features = ["client"]
+
+[[bin]]
+name = "basin-validator"
+path = "src/bin/validator.rs"
+
+[features]
+default = ["client", "webgl2"]
+client = ["dep:bevy"]
+webgl2 = ["client", "bevy/webgl2"]
+webgpu = ["client", "bevy/webgpu"]
+desktop = ["client", "bevy/x11", "bevy/wayland"]
+
+[dependencies]
+bevy = { version = "0.20.1", default-features = false, features = ["3d", "ui", "default_font", "std", "bevy_winit", "async_executor"], optional = true }
+rhai = { version = "1.27.0", default-features = false, features = ["std", "sync", "no_module"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Storage", "Document", "HtmlTextAreaElement", "HtmlElement"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

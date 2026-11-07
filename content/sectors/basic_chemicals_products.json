@@ -1,0 +1,57 @@
+[
+  {
+    "id": "sodium_chloride",
+    "name": "Industrial sodium chloride",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 160,
+    "hazard": "low",
+    "cheap_easy": true,
+    "description": "A coproduct of lithium carbonate precipitation and magnesium removal; washed salt can feed a chlor-alkali cell.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "sodium_hydroxide",
+    "name": "Sodium hydroxide solution",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 720,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Caustic coproduct from brine electrolysis; used in pretreatment and magnesium precipitation.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "chlorine_gas",
+    "name": "Chlorine gas",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 1150,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Toxic chlor-alkali coproduct; sale requires a gas-tight line, scrubber and safety interlocks.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "hydrogen_gas",
+    "name": "Hydrogen gas",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 1650,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Flammable chlor-alkali coproduct; route to acid synthesis or a certified gas holder.",
+    "price_unit": "USD/t"
+  },
+  {
+    "id": "hydrochloric_acid",
+    "name": "Hydrochloric acid",
+    "sector": "Basic inorganic chemicals",
+    "unit": "t",
+    "reference_price": 880,
+    "hazard": "high",
+    "cheap_easy": false,
+    "description": "Produced by controlled synthesis of hydrogen and chlorine; used to elute the loaded DLE sorbent.",
+    "price_unit": "USD/t"
+  }
+]
