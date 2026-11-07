@@ -99,7 +99,7 @@ pub fn update_hud(
         .map(|m| m.inventory_t.iter().sum::<f64>())
         .sum::<f64>();
     let view = format!(
-        "CASH  ${:,.0}\nSHIFT  {:05.1} min   SEED {}\nLiCl SPOT  ${:,.0}/t\nCONTRACT  {} · {:.3}/{:.3} t · {:.0} min\nGRID  {:.1}/310 kW   PRODUCTS  {:.3} t\n\nSELECTED\n{}\n\nDIAGNOSTIC\n{}\n\n{}",
+        "CASH  ${:.0}\nSHIFT  {:05.1} min   SEED {}\nLiCl SPOT  ${:.0}/t\nCONTRACT  {} · {:.3}/{:.3} t · {:.0} min\nGRID  {:.1}/310 kW   PRODUCTS  {:.3} t\n\nSELECTED\n{}\n\nDIAGNOSTIC\n{}\n\n{}",
         session.plant.cash,
         session.plant.time_minutes,
         session.seed,
