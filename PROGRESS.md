@@ -63,7 +63,7 @@
 - Balanced reactions/processes: 5, verified by local Python validator.
 - Declared machine/controller types: 12 (including controller types).
 - Validator: Python DLE and integrated stage PASS (256 seeds per controller); Rust validator NOT RUN; content runtime schema validation NOT YET IMPLEMENTED.
-- Latest Actions run 42370146372: archive SHA and extraction PASS, Cargo.lock generated, Python content/economy validator PASS. `cargo fmt --all -- --check` FAILED because the source snapshot was not rustfmt-formatted; Rust tests, Rust validator and WASM build were skipped.
+- Latest Actions run 42370226105: archive SHA/extraction PASS, Cargo.lock generated, Python content/economy validator PASS, rustfmt applied and committed (0b585d11). `cargo test --no-default-features --lib` then failed with three related E0308/E0277 errors in `src/sim/plant.rs:843-844`: f32 stress multiplied by f64 timestep, then compared with f64 RNG. This commit promotes the stress sum to f64 before forming the leak probability. The Rust validator and WASM build have not yet run.
 
 ## REMOTE SOURCE IMPORT
 
@@ -75,3 +75,8 @@
 
 - Applied rustfmt to all tracked Rust source and tests.
 - Formatting-only changes were committed by the build runner before compile/test steps.
+
+## RUST TYPE REPAIR
+
+- Corrected the leak-probability calculation to promote f32 stress to f64 before multiplying by the f64 fixed timestep and comparing with the f64 RNG sample.
+- Next: rerun cargo tests; then the headless Rust validator; then the WebAssembly build and Trunk package.
