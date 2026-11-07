@@ -840,7 +840,8 @@ impl PlantSim {
                     0.0
                 };
                 let corrosion_stress = if corrosive { 0.0015 } else { 0.0 };
-                let probability = (f64::from(fouled_stress + corrosion_stress) * dt).clamp(0.0, 0.02);
+                let probability =
+                    (f64::from(fouled_stress + corrosion_stress) * dt).clamp(0.0, 0.02);
                 if self.rng.unit() < probability {
                     connection.leak_fraction = 0.08;
                     new_leaks += 1;

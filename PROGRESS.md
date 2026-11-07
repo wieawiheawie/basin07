@@ -80,3 +80,8 @@
 
 - Corrected the leak-probability calculation to promote f32 stress to f64 before multiplying by the f64 fixed timestep and comparing with the f64 RNG sample.
 - Next: rerun cargo tests; then the headless Rust validator; then the WebAssembly build and Trunk package.
+
+## RUST FORMAT REPAIR
+
+- Applied rustfmt to all tracked Rust source and tests.
+- Formatting-only changes were committed by the build runner before compile/test steps.
