@@ -1,27 +1,24 @@
 {
-  "name": "BASIN 07 — Rust + WebAssembly",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "name": "Deskbound",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
-    "ghcr.io/devcontainers/features/rust:1": {
-      "version": "stable",
-      "profile": "default",
-      "components": "rustfmt,clippy",
-      "targets": "wasm32-unknown-unknown"
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
     }
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh",
-  "forwardPorts": [8080],
+  "postCreateCommand": "bash .devcontainer/setup.sh && npm install --no-audit --no-fund",
+  "forwardPorts": [5173],
   "portsAttributes": {
-    "8080": {
-      "label": "BASIN 07 web client",
-      "onAutoForward": "openBrowser"
+    "5173": {
+      "label": "Deskbound",
+      "onAutoForward": "openPreview"
     }
   },
   "customizations": {
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
-        "tamasfe.even-better-toml"
+        "ms-vscode.vscode-typescript-next"
       ]
     }
   }

@@ -1,7 +1,7 @@
-/target/
-/dist/
-/.trunk/
-*.wasm
+node_modules/
+pkg/
+dist/
+sim/target/
+target/
 *.log
-
-/.build-metrics/
+.DS_Store

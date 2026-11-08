@@ -1,0 +1,195 @@
+import type { Simulation } from "../pkg/deskbound_sim.js";
+import glossary from "../glossary.json";
+import { getSuggestions, parseReply } from "./command";
+
+const HELP_TEXT: Record<string, string> = {
+  "action.carve": "Make a shallow channel between two coordinates or named objects.",
+  "action.uncap": "Remove a bottle cap. The cap stays on the desk.",
+  "action.tip": "Tip an uncapped bottle; add a target after the toward word to aim it.",
+  "action.upright": "Return a bottle to its standing position.",
+  "action.look": "Read an object's state and desk coordinates.",
+  "action.list": "List the names of things on the desk."
+};
+
+function byId<T extends HTMLElement>(id: string): T {
+  const element = document.getElementById(id);
+  if (!element) throw new Error("Missing interface element: #" + id);
+  return element as T;
+}
+
+export function setupConsole(simulation: Simulation) {
+  const form = byId<HTMLFormElement>("command-form");
+  const input = byId<HTMLInputElement>("command-input");
+  const log = byId<HTMLDivElement>("prompt-log");
+  const suggestions = byId<HTMLDivElement>("suggestions");
+  const helpPanel = byId<HTMLDivElement>("help-panel");
+  const helpList = byId<HTMLDivElement>("help-list");
+  const energyFill = byId<HTMLDivElement>("energy-fill");
+  const energyLabel = byId<HTMLSpanElement>("energy-label");
+  const queueLabel = byId<HTMLSpanElement>("queue-label");
+  const hoverLabel = byId<HTMLDivElement>("hover-label");
+  const lowButton = byId<HTMLButtonElement>("low-toggle");
+  const helpButton = byId<HTMLButtonElement>("help-toggle");
+
+  const vocabulary = [
+    ...Object.values(glossary),
+    ...Array.from({ length: simulation.objectCount() }, (_, index) => simulation.objectName(index))
+  ];
+  const history: string[] = [];
+  let historyIndex = 0;
+  let lastSequence = simulation.resultSequence();
+  let helpSignature = "";
+
+  function appendLog(text: string, kind: "command" | "success" | "error" | "note"): void {
+    const line = document.createElement("div");
+    line.className = "log-line log-" + kind;
+    line.textContent = text;
+    log.append(line);
+    while (log.childElementCount > 5) log.firstElementChild?.remove();
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function renderSuggestions(): void {
+    const words = getSuggestions(input.value, vocabulary);
+    suggestions.replaceChildren();
+    if (words.length === 0) {
+      suggestions.classList.remove("visible");
+      return;
+    }
+    for (const word of words) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "suggestion";
+      item.textContent = word;
+      item.addEventListener("click", () => {
+        const parts = input.value.split(/\s+/);
+        parts[parts.length - 1] = word;
+        input.value = parts.join(" ") + " ";
+        suggestions.replaceChildren();
+        suggestions.classList.remove("visible");
+        input.focus();
+      });
+      suggestions.append(item);
+    }
+    suggestions.classList.add("visible");
+  }
+
+  function renderHelp(): void {
+    const discovered = Object.keys(HELP_TEXT).filter((id) => simulation.isDiscovered(id));
+    const signature = discovered.join("|");
+    if (signature === helpSignature) return;
+    helpSignature = signature;
+    helpList.replaceChildren();
+    for (const actionId of discovered) {
+      const row = document.createElement("div");
+      row.className = "help-entry";
+      const word = (glossary as Record<string, string>)[actionId] ?? actionId;
+      const title = document.createElement("strong");
+      title.textContent = word;
+      const description = document.createElement("p");
+      description.textContent = HELP_TEXT[actionId];
+      const example = document.createElement("code");
+      const syntax = (id: string) => (glossary as Record<string, string>)[id] ?? id;
+      if (actionId === "action.carve") {
+        example.textContent = word + " " + syntax("syntax.from") + " (2,3) " +
+          syntax("syntax.to") + " (8,3) " + syntax("option.depth") + " 0.2 " +
+          syntax("option.width") + " 0.5";
+      } else if (actionId === "action.uncap") {
+        example.textContent = word + " bottle_1";
+      } else if (actionId === "action.tip") {
+        example.textContent = word + " bottle_1 " + syntax("syntax.toward") + " east";
+      } else if (actionId === "action.upright" || actionId === "action.look") {
+        example.textContent = word + " bottle_1";
+      } else {
+        example.textContent = word;
+      }
+      row.append(title, description, example);
+      helpList.append(row);
+    }
+    if (discovered.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "help-empty";
+      empty.textContent = "No words have been learned yet. Look around the desk and listen.";
+      helpList.append(empty);
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const source = input.value.trim();
+    if (source.length === 0) return;
+    if (!simulation.enqueueCommand(source)) {
+      appendLog("The command queue is full. Let the desk finish a thought first.", "error");
+      return;
+    }
+    history.push(source);
+    historyIndex = history.length;
+    appendLog("› " + source, "command");
+    input.value = "";
+    renderSuggestions();
+    input.focus();
+  });
+
+  input.addEventListener("input", renderSuggestions);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (history.length > 0) {
+        historyIndex = Math.max(0, historyIndex - 1);
+        input.value = history[historyIndex] ?? "";
+        renderSuggestions();
+      }
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      historyIndex = Math.min(history.length, historyIndex + 1);
+      input.value = history[historyIndex] ?? "";
+      renderSuggestions();
+    } else if (event.key === "Tab") {
+      const first = suggestions.querySelector<HTMLButtonElement>(".suggestion");
+      if (first) {
+        event.preventDefault();
+        first.click();
+      }
+    } else if (event.key === "Escape") {
+      suggestions.replaceChildren();
+      suggestions.classList.remove("visible");
+    }
+  });
+
+  helpButton.addEventListener("click", () => {
+    const open = helpPanel.classList.toggle("open");
+    helpButton.setAttribute("aria-expanded", String(open));
+    renderHelp();
+  });
+
+  lowButton.addEventListener("click", () => {
+    const low = lowButton.getAttribute("aria-pressed") !== "true";
+    lowButton.setAttribute("aria-pressed", String(low));
+    lowButton.textContent = low ? "Low graphics · on" : "Low graphics";
+    document.dispatchEvent(new CustomEvent("deskbound:graphics", { detail: { low } }));
+  });
+
+  appendLog("A little world is waiting. Type list to learn the names on your desk.", "note");
+  renderHelp();
+
+  return {
+    update(): void {
+      const energy = Math.round(simulation.energy());
+      energyFill.style.width = energy + "%";
+      energyLabel.textContent = energy + " energy";
+      queueLabel.textContent = simulation.queueLength() + " queued";
+      const sequence = simulation.resultSequence();
+      if (sequence !== lastSequence) {
+        lastSequence = sequence;
+        const reply = parseReply(simulation.lastResult());
+        appendLog(reply.message, reply.ok ? "success" : "error");
+        renderHelp();
+      }
+    },
+    setHover(name: string): void {
+      hoverLabel.textContent = name;
+      hoverLabel.classList.toggle("visible", name.length > 0);
+      renderHelp();
+    }
+  };
+}

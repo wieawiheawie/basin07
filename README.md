@@ -1,87 +1,57 @@
-# BASIN 07
+# Deskbound
 
-A browser-first, real-time 3D factory game about geothermal direct lithium extraction (DLE). Build a process plant from an empty lease, physically connect typed fluid/power/logic lines, recover lithium from variable geothermal brine, manage reagent and water limits, and sell products into a changing market.
+Deskbound is a small living world on a wooden desk. You do not pick up or drag things. You speak to the desk through a tiny command language, and the Rust simulation decides what happens.
 
-## Current implementation status
+The browser is a window into the room; the simulation itself lives in Rust and WebAssembly.
 
-This repository is being built in milestones. See [`PROGRESS.md`](PROGRESS.md) first; it is the authoritative resume document. Source and design artifacts are provided, but this workspace did not include a Rust toolchain at the time of authoring. Do not treat a documented command as a tested build until `PROGRESS.md` records a passing result.
+## Run in a Codespace
 
-## Design documents
+After this replacement is pushed, rebuild the Codespace container once so the Node and Rust toolchain features are installed.
 
-- [`DESIGN.md`](DESIGN.md) — game loop, chemistry, products, sectors, controllers and UX.
-- [`RESEARCH.md`](RESEARCH.md) — market/prior-art survey, candidate concepts and qualified originality claim.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — Rust/WASM/Bevy/Rhai architecture and performance plan.
-- [`PROGRESS.md`](PROGRESS.md) — current state, commits, next work, known issues and content counts.
+Then run:
 
-## Planned starter content
+    npm run dev
 
-Exactly ten products in two connected sectors are registered in `content/products.json`:
+Open the forwarded Vite port **5173**. The development command builds the simulation for WebAssembly first, then starts Vite with hot reload.
 
-- DLE & battery materials: LiCl eluate, lithium carbonate, lithium hydroxide monohydrate, magnesium hydroxide cake, calcium carbonate cake.
-- Basic inorganic chemicals: sodium chloride, sodium hydroxide, chlorine gas, hydrogen gas, hydrochloric acid.
+On a plain Ubuntu machine:
 
-Imported soda ash and hydrated lime are reagents, not player-manufactured products in the first slice. Run the DLE gate before accepting the chemical-sector integration, then run the combined gate:
+    bash .devcontainer/setup.sh
+    npm install
+    npm run dev
 
-```bash
-python scripts/validate_content.py --stage dle --seeds 256
-python scripts/validate_content.py --stage all --seeds 256
-```
+## Commands
 
-The validator checks the ten-product/two-sector catalogue, per-sector safe/easy and high-hazard goods, cross-sector NaCl and recovered-heat links, atom balance for the five declared reactions, seeded market variation, and the custom-code / preset-controller economy comparison.
+    list
+    look bottle_1
+    uncap bottle_1
+    tip bottle_1
+    tip bottle_1 toward east
+    upright bottle_1
+    carve from (2,3) to (8,3) depth 0.2 width 0.5
+    carve from bottle_1 to book_2
 
-## Build prerequisites
+Desk coordinates run from (0,0) to (10,10). A bottle must be uncapped before it can pour. Commands enter a small queue and spend attention; the queue and energy recover over time.
 
-- Rust stable toolchain (edition 2024)
-- `wasm32-unknown-unknown` target
-- Trunk
-- A recent desktop browser with WebGL2 (default build) or WebGPU (optional build)
+The ? wordbook shows only actions you have discovered. Hovering over props introduces their related words. The glossary lives in glossary.json, separate from the parser, so display words can be remapped without changing parser code.
 
-Install/build commands once a Rust toolchain is available:
+## Project layout
 
-```bash
-rustup target add wasm32-unknown-unknown
-cargo install trunk --locked
-```
+- sim/ — fixed-step heightmap, water, object and people state, lexer, parser and interpreter in Rust.
+- src/scene.ts — Three.js room, procedural props, camera and direct WASM buffer bindings.
+- src/console.ts — command prompt, history, autocomplete, queue feedback and discovered-word panel.
+- glossary.json — internal action IDs mapped to the words shown to the player.
+- .devcontainer/ — Codespace setup using prebuilt wasm-pack, wasm-bindgen and wasm-opt binaries.
 
-## Run in a browser
+## Scripts
 
-```bash
-trunk serve --open
-```
+| Command | Purpose |
+| --- | --- |
+| npm run dev | Build debug WASM and start Vite. |
+| npm run build | Build release WASM, run wasm-opt, typecheck and bundle the site. |
+| npm test | Run Rust tests and Vitest. |
+| npm run typecheck | Typecheck the TypeScript frontend. |
 
-## Release builds
+## Scope
 
-Default WebGL2 build:
-
-```bash
-trunk build --release
-```
-
-Optional WebGPU build (build separately; the Bevy backend feature is selected at compile time):
-
-```bash
-cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgpu --bin basin07
-```
-
-## Headless validation
-
-```bash
-python scripts/validate_content.py --stage dle --seeds 256
-python scripts/validate_content.py --stage all --seeds 256
-cargo test --no-default-features --lib
-cargo run --no-default-features --bin basin-validator -- --seeds 256
-cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
-```
-
-## Automated build environment
-
-The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml` and a Codespaces/devcontainer definition at `.devcontainer/devcontainer.json`. CI provisions stable Rust, the `wasm32-unknown-unknown` target and Trunk, then runs the content validator, Rust tests, headless validator and WebGL2 WebAssembly package build.
-
-## Deployment
-
-Build with `trunk build --release`, then publish the contents of `dist/` to GitHub Pages. Configure GitHub Pages to deploy from the `gh-pages` branch or a GitHub Actions workflow that uploads `dist/`. Because this build is client-side WASM, it needs only static hosting and correct MIME types for `.wasm`.
-
-## Notes
-
-- This is a game simulation, not engineering design software or operating instructions for an industrial plant.
-- Chemistry and process performance are deliberately bounded, disclosed abstractions. Exact equipment design, process safety and commercial vendor-specific performance are out of scope.
+Only milestone 1 is in scope. The garden sprouts are decorative; growth, needs, goals, triggers and scenario progression are later milestones. The people currently wander deterministically and avoid water and nearby obstacles. This is a small local steering model, not a needs or social simulation.

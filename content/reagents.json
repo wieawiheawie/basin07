@@ -1,9 +1,0 @@
-[
-  {"id":"soda_ash","name":"Soda ash (sodium carbonate)","formula":"Na2CO3","unit":"kg","source":"market import","use":"Lithium carbonate precipitation"},
-  {"id":"calcium_hydroxide","name":"Hydrated lime","formula":"Ca(OH)2","unit":"kg","source":"market import","use":"Lithium hydroxide causticisation"},
-  {"id":"magnesium_chloride","name":"Magnesium chloride in brine","formula":"MgCl2","unit":"kg","source":"reservoir composition","use":"Magnesium precipitation"},
-  {"id":"water","name":"Process water","formula":"H2O","unit":"m3","source":"site water allocation","use":"Washing, electrolysis and crystallisation"},
-  {"id":"raw_brine","name":"Geothermal brine","formula":"variable mixture","unit":"m3","source":"wellhead","use":"Lithium feed and heat source"},
-  {"id":"electricity","name":"Electrical power","formula":"utility","unit":"kWh","source":"grid connection","use":"Pumps, electrolysis, controls and drives"},
-  {"id":"low_grade_steam","name":"Recovered low-grade steam","formula":"utility byproduct","unit":"kWh_th","source":"HCl synthesis heat recovery","use":"DLE feed and elution preheating"}
-]

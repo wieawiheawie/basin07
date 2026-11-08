@@ -1,57 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-export PATH="${HOME}/.cargo/bin:${PATH}"
+BIN_DIR="$HOME/.cargo/bin"
+mkdir -p "$BIN_DIR"
+export PATH="$BIN_DIR:$PATH"
 
-echo "[BASIN 07] Installing prebuilt Rust developer tools..."
-if ! command -v cargo-binstall >/dev/null 2>&1; then
-  curl -L --proto '=https' --tlsv1.2 -sSf \
-    https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-fi
-export PATH="${HOME}/.cargo/bin:${PATH}"
-
-# Keep wasm-bindgen-cli exactly aligned with the wasm-bindgen crate in Cargo.lock.
-WB_VERSION="$(awk '
-  $0 == "name = \"wasm-bindgen\"" { getline; sub(/^version = \"/, ""); sub(/\"$/, ""); print; exit }
-' Cargo.lock)"
-if [[ -z "${WB_VERSION}" ]]; then
-  echo "[BASIN 07] Could not determine wasm-bindgen version from Cargo.lock." >&2
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js 24 LTS is required. Rebuild the Codespace using the Node feature." >&2
   exit 1
 fi
 
-cargo binstall --no-confirm --locked \
-  "trunk@0.22.1" \
-  "wasm-bindgen-cli@${WB_VERSION}" \
-  cargo-machete
-
-# The optional native desktop build uses clang + lld and X11/Wayland headers.
-if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
-  missing=()
-  command -v clang >/dev/null 2>&1 || missing+=(clang)
-  command -v ld.lld >/dev/null 2>&1 || missing+=(lld)
-  command -v pkg-config >/dev/null 2>&1 || missing+=(pkg-config)
-  if (("${#missing[@]}" > 0)) || ! dpkg -s libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev >/dev/null 2>&1; then
-    echo "[BASIN 07] Installing native linker and window-system development packages..."
-    sudo apt-get update -qq
-    sudo apt-get install -y --no-install-recommends clang lld pkg-config \
-      libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev \
-      libxi-dev libxcursor-dev libxinerama-dev
-  fi
+if ! command -v rustup >/dev/null 2>&1; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
 fi
 
+rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+rustup default stable
 rustup target add wasm32-unknown-unknown
-echo "[BASIN 07] Fetching locked WebAssembly dependencies..."
-cargo fetch --locked --target wasm32-unknown-unknown
 
-echo "[BASIN 07] Auditing dependencies..."
-cargo tree -d
-cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --duplicates
-cargo machete
+install_release_binary() {
+  local url="$1"
+  local binary_name="$2"
+  local temp_dir
+  temp_dir="$(mktemp -d)"
+  curl -fsSL "$url" -o "$temp_dir/archive.tar.gz"
+  tar -xzf "$temp_dir/archive.tar.gz" -C "$temp_dir"
+  local binary_path
+  binary_path="$(find "$temp_dir" -type f -name "$binary_name" -print -quit)"
+  if [[ -z "$binary_path" ]]; then
+    echo "Could not find $binary_name in $url" >&2
+    rm -rf "$temp_dir"
+    return 1
+  fi
+  install -m 0755 "$binary_path" "$BIN_DIR/$binary_name"
+  rm -rf "$temp_dir"
+}
 
-echo "[BASIN 07] Priming the incremental WebAssembly build cache..."
-CARGO_BUILD_JOBS=2 cargo build --locked --profile wasm-dev \
-  --target wasm32-unknown-unknown --no-default-features \
-  --features client,webgl2,dev-debug --bin basin07
+# Download the official prebuilt Linux binaries; cargo is not used to compile toolchains.
+install_release_binary \
+  "https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.1/wasm-pack-v0.15.1-x86_64-unknown-linux-musl.tar.gz" \
+  "wasm-pack"
+install_release_binary \
+  "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl.tar.gz" \
+  "wasm-bindgen"
+install_release_binary \
+  "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz" \
+  "wasm-opt"
 
-echo "[BASIN 07] Setup complete. Run: trunk serve"
+cat > "$HOME/.profile.deskbound" <<'EOF'
+export PATH="$HOME/.cargo/bin:$PATH"
+EOF
+
+if ! grep -q 'profile.deskbound' "$HOME/.bashrc" 2>/dev/null; then
+  printf '\n[ -f "$HOME/.profile.deskbound" ] && . "$HOME/.profile.deskbound"\n' >> "$HOME/.bashrc"
+fi
+
+echo "Deskbound toolchain ready:"
+node --version
+rustc --version
+cargo --version
+wasm-pack --version
+wasm-bindgen --version
+wasm-opt --version

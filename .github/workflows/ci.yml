@@ -1,70 +1,33 @@
-name: BASIN 07 CI
+name: Deskbound checks
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: basin07-ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate-and-check:
-    name: Content, Rust tests and WASM check
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      CARGO_BUILD_JOBS: 2
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.12"
-
-      - name: Install stable Rust and WASM target
-        uses: dtolnay/rust-toolchain@stable
+          components: clippy
+      - uses: actions/setup-node@v4
         with:
-          targets: wasm32-unknown-unknown
-          components: rustfmt
-
-      - name: Ensure clang and lld are available for native validator links
+          node-version: 24
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sim -> sim/target
+      - name: Rust tests
+        run: cargo test --manifest-path sim/Cargo.toml
+      - name: Rust clippy
+        run: cargo clippy --manifest-path sim/Cargo.toml --all-targets -- -D warnings
+      - name: TypeScript typecheck
         run: |
-          if ! command -v clang >/dev/null 2>&1 \
-            || ! command -v ld.lld >/dev/null 2>&1 \
-            || ! dpkg -s libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y clang lld libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
-          fi
-
-      - name: Cache Cargo dependencies and target artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: basin07-linux
-
-      - name: Validate content and economy
-        run: python scripts/validate_content.py --stage all --seeds 256
-
-      - name: Check setup and benchmark shell scripts
-        run: bash -n .devcontainer/setup.sh scripts/bench-build.sh
-
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Inspect WebAssembly dependency graph
-        run: cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --duplicates
-
-      - name: Check fast WebAssembly dev profile
-        run: cargo check --profile wasm-dev --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --bin basin07
-
-      - name: Run Rust simulation and headless client tests
-        run: cargo test --no-default-features --features client,desktop,dev-debug --lib
-
-      - name: Run Rust headless validator
-        run: cargo run --no-default-features --bin basin-validator -- --seeds 256
+          npm install --no-audit --no-fund
+          npm run typecheck

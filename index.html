@@ -1,40 +1,69 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#101a22" />
-    <title>BASIN 07 — Geothermal Lithium Works</title>
-    <link data-trunk rel="rust" data-bin="basin07" data-cargo-no-default-features data-cargo-features="client,webgl2" data-cargo-profile-dev="wasm-dev" data-wasm-opt="z" />
-    <style>
-      :root { color-scheme: dark; background: #101a22; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-      * { box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101a22; }
-      body { display: grid; place-items: stretch; }
-      #basin-canvas { width: 100%; height: 100%; display: block; outline: none; }
-      #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #dce7e8; pointer-events: none; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; opacity: 0; }
-      #controller-panel { position: fixed; right: 14px; bottom: 14px; width: min(420px, 42vw); color: #d7e2e1; background: rgba(7,18,24,.94); border: 1px solid rgba(150,190,190,.22); border-radius: 10px; padding: 10px; font-size: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
-      #controller-panel label { display: block; margin-bottom: 6px; color: #d6b86b; letter-spacing: .08em; text-transform: uppercase; }
-      #controller-code { width: 100%; height: 138px; resize: vertical; color: #d9f2e7; background: #0b1519; border: 1px solid #34484b; border-radius: 6px; padding: 9px; font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
-      #controller-help { color: #97a9a7; margin-top: 6px; line-height: 1.45; }
-      @media (max-width: 900px) { #controller-panel { width: 48vw; } }
-    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#211f1b" />
+    <meta name="description" content="Deskbound — a small living world that listens to your words." />
+    <title>Deskbound</title>
   </head>
   <body>
-    <canvas id="basin-canvas" tabindex="0"></canvas>
-    <div id="loading">BASIN 07 · geothermal process works</div>
-    <section id="controller-panel">
-      <label for="controller-code">Rhai controller editor</label>
-      <textarea id="controller-code" spellcheck="false">if read("bed.breakthrough") &gt; 0.12 || read("bed.loading") &gt; 0.72 {
-    set("feed_valve", 0.0);
-    set("wash_valve", 0.55);
-    set("elution_valve", 0.85);
-} else {
-    set("feed_valve", 1.0);
-    set("wash_valve", 0.0);
-    set("elution_valve", 0.0);
-}</textarea>
-      <div id="controller-help">Select a Code Controller (F2, then place/select it), connect Logic Sensor and Logic Actuator cables (F3 to cycle), then press F7 to compile. Only sensor reads, bounded actuator setpoints and alarms are exposed.</div>
-    </section>
+    <main id="scene" class="scene">
+      <div class="vignette" aria-hidden="true"></div>
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark"><span></span><span></span><span></span></div>
+          <div>
+            <div class="brand-name">deskbound</div>
+            <div class="brand-subtitle">a little world, spoken into being</div>
+          </div>
+        </div>
+        <div class="top-tools">
+          <div class="energy-card">
+            <div class="energy-top"><span>ATTENTION</span><span id="energy-label">100 energy</span></div>
+            <div class="energy-track"><div id="energy-fill" class="energy-fill"></div></div>
+            <div id="queue-label" class="queue-label">0 queued</div>
+          </div>
+          <button id="low-toggle" class="quiet-button" type="button" aria-pressed="false">Low graphics</button>
+          <button id="help-toggle" class="help-button" type="button" aria-expanded="false" aria-controls="help-panel">?</button>
+        </div>
+      </header>
+
+      <div class="world-caption">
+        <span class="caption-dot"></span>
+        <span>THE DESK</span>
+        <span class="caption-divider"></span>
+        <span id="hover-label" class="hover-label"></span>
+      </div>
+
+      <aside id="help-panel" class="help-panel" aria-label="Discovered words">
+        <div class="panel-heading">
+          <div><span class="eyebrow">YOUR WORDBOOK</span><h2>Words discovered</h2></div>
+          <span class="panel-mark">?</span>
+        </div>
+        <p class="panel-intro">Only words you have learned appear here.</p>
+        <div id="help-list" class="help-list"></div>
+      </aside>
+
+      <footer class="command-dock">
+        <div class="dock-heading">
+          <div class="dock-title">
+            <span class="command-symbol">⌁</span>
+            <div><strong>Speak to the desk</strong><span>Commands are small. The world takes its time.</span></div>
+          </div>
+          <span class="dock-hint">RIGHT-DRAG TO LOOK AROUND · SCROLL TO ZOOM</span>
+        </div>
+        <div class="prompt-log" id="prompt-log" aria-live="polite"></div>
+        <form id="command-form" class="command-form" autocomplete="off">
+          <span class="prompt-chevron">›</span>
+          <input id="command-input" name="command" type="text" spellcheck="false" autocomplete="off" placeholder="try: list" aria-label="Enter a command" />
+          <span class="enter-hint">ENTER ↵</span>
+          <button class="send-button" type="submit" aria-label="Send command">↗</button>
+          <div id="suggestions" class="suggestions" role="listbox"></div>
+        </form>
+      </footer>
+      <div id="loading-status" class="loading-status">Waking the desk…</div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
