@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_keywords_and_out_of_range_coordinates() {
-        assert!(parse("carve (2,3) to (8,3)", &glossary()).is_err());
+        assert!(parse("carve (2,3) (8,3)", &glossary()).is_err());
         assert!(parse("carve from (12,3) to (8,3)", &glossary()).is_err());
     }
 
