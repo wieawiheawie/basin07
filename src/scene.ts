@@ -27,6 +27,7 @@ const DESK_SIZE = 10;
 const vertexCount = GRID * GRID;
 const RESIDENT_HEIGHT = 0.40;
 const PACK_SCALE = RESIDENT_HEIGHT / 5;
+const FBX_MODEL_SCALE = 0.005; // FBX source geometry is authored in centimetre-like units; scale it into the desk world.
 const TABLE_TOP_HEIGHT = 3 * PACK_SCALE;
 const PLATFORM_THICKNESS = 0.76 * PACK_SCALE;
 const TAVERN_SURFACE_Y = 0.431 + PLATFORM_THICKNESS;
@@ -591,7 +592,7 @@ function createDeskScene(
       }
     }
 
-    const onTavernTable = ["tankard","mug","bread_basket","cheese_wheel","candle","lantern"].includes(kind);
+    const onTavernTable = ["tankard","mug","bread_basket","cheese_wheel","candle"].includes(kind);
     const y = isTavernModel
       ? (kind === "plank_floor" || kind === "barrel" || kind === "crate" || kind === "sack"
           ? 0.431
@@ -607,22 +608,6 @@ function createDeskScene(
         child.material = Array.isArray(child.material)
           ? child.material.map((material) => material.clone())
           : child.material.clone();
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        for (const material of materials) {
-          if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
-            paintOriginals.set(material, material.color.clone());
-          }
-        }
-      });
-    }
-    if (kind === "pencil" || kind === "book" || kind === "bottle") {
-      visual.root.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return;
-        if (Array.isArray(child.material)) {
-          child.material = child.material.map((material) => material.clone());
-        } else {
-          child.material = child.material.clone();
-        }
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         for (const material of materials) {
           if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
@@ -726,7 +711,7 @@ function createDeskScene(
     }
     const loader = new FBXLoader(manager);
     const status = document.getElementById("loading-status");
-    const assetScale = PACK_SCALE;
+    const assetScale = FBX_MODEL_SCALE;
     let completed = 0;
     let loaded = 0;
     if (status) status.textContent = medievalPackAvailable

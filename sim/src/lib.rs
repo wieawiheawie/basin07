@@ -176,25 +176,25 @@ impl Simulation {
             },
             WorldObject { name: "plank_floor_1", kind: ObjectKind::PlankFloor, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
             WorldObject { name: "table_1", kind: ObjectKind::Table, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 7.28, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 7.79, z: 7.43, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 7.79, z: 7.99, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "tankard_1", kind: ObjectKind::Tankard, x: 7.48, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.3 , colour_index: 0 },
-            WorldObject { name: "tankard_2", kind: ObjectKind::Tankard, x: 7.72, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.4 , colour_index: 0 },
+            WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 7.6, z: 6.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 6.65, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 1.5707963, colour_index: 0 },
+            WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 8.55, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 1.5707963, colour_index: 0 },
+            WorldObject { name: "tankard_1", kind: ObjectKind::Tankard, x: 7.3, z: 7.58, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.3, colour_index: 0 },
+            WorldObject { name: "tankard_2", kind: ObjectKind::Tankard, x: 7.85, z: 7.58, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.4, colour_index: 0 },
             WorldObject { name: "mug_1", kind: ObjectKind::Mug, x: 7.60, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.15 , colour_index: 0 },
-            WorldObject { name: "bread_basket_1", kind: ObjectKind::BreadBasket, x: 7.42, z: 7.79, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 , colour_index: 0 },
-            WorldObject { name: "cheese_wheel_1", kind: ObjectKind::CheeseWheel, x: 7.79, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "candle_1", kind: ObjectKind::Candle, x: 7.60, z: 7.49, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
-            WorldObject { name: "lantern_1", kind: ObjectKind::Lantern, x: 7.82, z: 7.73, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "bread_basket_1", kind: ObjectKind::BreadBasket, x: 7.2, z: 7.82, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2, colour_index: 0 },
+            WorldObject { name: "cheese_wheel_1", kind: ObjectKind::CheeseWheel, x: 8.0, z: 7.82, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "candle_1", kind: ObjectKind::Candle, x: 7.6, z: 7.58, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "lantern_1", kind: ObjectKind::Lantern, x: 8.65, z: 6.75, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.25, colour_index: 0 },
             WorldObject { name: "barrel_1", kind: ObjectKind::Barrel, x: 5.55, z: 6.25, cap_on: true, volume: INITIAL_BARREL_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
             WorldObject { name: "crate_1", kind: ObjectKind::Crate, x: 6.15, z: 5.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 , colour_index: 0 },
             WorldObject { name: "sack_1", kind: ObjectKind::Sack, x: 5.75, z: 5.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.3 , colour_index: 0 },
         ];
 
         let people = vec![
-            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, wander_timer: 0.2, seed: 11, target_x: 7.28, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
-            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, wander_timer: 0.5, seed: 23, target_x: 7.79, target_z: 7.43, seat_target: true, at_tavern: false, seated: false },
-            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, wander_timer: 0.8, seed: 37, target_x: 7.79, target_z: 7.99, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, wander_timer: 0.2, seed: 11, target_x: 7.6, target_z: 6.95, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, wander_timer: 0.5, seed: 23, target_x: 6.65, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, wander_timer: 0.8, seed: 37, target_x: 8.55, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
             Person { x: 5.1, z: 5.8, heading: -1.4, wetness: 0.0, wander_timer: 0.1, seed: 47, target_x: 6.45, target_z: 8.75, seat_target: false, at_tavern: false, seated: false },
             Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59, target_x: 8.9, target_z: 8.45, seat_target: false, at_tavern: false, seated: false },
         ];
@@ -1233,6 +1233,22 @@ mod tests {
             simulation.set_keyword(id, word);
         }
         simulation
+    }
+
+    #[test]
+    fn tavern_benches_are_spaced_around_the_table() {
+        let simulation = ready_simulation();
+        let table = simulation.objects.iter().find(|object| object.name == "table_1").unwrap();
+        for name in ["stool_1", "stool_2", "stool_3"] {
+            let stool = simulation.objects.iter().find(|object| object.name == name).unwrap();
+            let dx = stool.x - table.x;
+            let dz = stool.z - table.z;
+            assert!((dx * dx + dz * dz).sqrt() >= 0.7, "{name} overlaps the table footprint");
+        }
+        let stool_two = simulation.objects.iter().find(|object| object.name == "stool_2").unwrap();
+        let stool_three = simulation.objects.iter().find(|object| object.name == "stool_3").unwrap();
+        assert!((stool_two.yaw - std::f32::consts::FRAC_PI_2).abs() < 0.001);
+        assert!((stool_three.yaw - std::f32::consts::FRAC_PI_2).abs() < 0.001);
     }
 
     #[test]

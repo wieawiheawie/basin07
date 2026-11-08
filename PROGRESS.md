@@ -24,7 +24,9 @@
 ## Medieval tavern model replacement
 
 - The new pack is Low Poly Simple Medieval Props by JustCreate3D (Oleh Lila). It is governed by the author's own licence, not CC0. The licence permits integrated use in compiled games/apps and prohibits standalone redistribution of the model files.
-- Furniture_01.fbx supplies the tavern table. The pack has no exact stools, basket, cheese wheel or lantern, so bench, bucket, plate/cheese detail and brazier substitutes are used.
+- Furniture_01.fbx supplies the tavern table. The source FBX geometry is about 183.4 × 79.8 × 78.0 units; at the calibrated 0.005 desk scale this becomes about 0.92 × 0.40 × 0.39 world units. All imported models use the same source-unit scale rather than the old character scale, which was 16 times too large.
+- Furniture_02.fbx supplies three bench-style seats. They are rotated and spaced around the table, and the three tavern residents now target those seat positions. The brazier/fire model is on the floor beside the table rather than on the tabletop.
+- The pack has no exact stools, basket, cheese wheel or lantern, so bench, bucket, plate/cheese detail and brazier substitutes are used.
 - The repository excludes the Unity package and extracted FBX/texture files. The selective importer writes them to ignored .local-assets/; Vite embeds them in the game bundle. No .blend files are included or generated.
 - Model load failure or absent local imports keep procedural fallbacks visible.
 
