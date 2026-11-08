@@ -8,7 +8,7 @@ Run the development server without `--release`:
 trunk serve
 ```
 
-The `index.html` Rust asset selects Cargo's `wasm-dev` profile for development. It enables incremental compilation, omits debug information, compiles the BASIN 07 client crate at `opt-level = 1`, and compiles external dependencies at `opt-level = 3` once. Build scripts and procedural macros remain at `opt-level = 0`. Cargo is capped at two parallel jobs.
+The `index.html` Rust asset selects Cargo's `wasm-dev` profile for development. It enables incremental compilation, omits debug information, compiles the BASIN 07 client crate at `opt-level = 1`, and compiles external dependencies at `opt-level = 3` once. Cargo's package-wide dependency override also takes precedence for matching build/proc-macro crates, so this may increase cold build time; the Codespace benchmark is needed to validate the trade-off. Cargo is capped at two parallel jobs.
 
 Trunk does not run `wasm-opt` in this dev path. The `data-wasm-opt="z"` setting is only applied in release mode. Dev builds skip release minification and content hashing, and Trunk's watcher ignores Cargo/build output directories. Codespaces post-create fetches dependencies and primes the same WASM profile.
 

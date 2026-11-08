@@ -6,7 +6,7 @@
 
 - Repository: https://github.com/wieawiheawie/basin07, branch `main`.
 - Milestone 1 scene and Trunk release artifact remain; the user's Codespace browser smoke test is still pending.
-- Build iteration changes are committed: custom incremental `wasm-dev` profile; Trunk dev profile selection; release-only minification/wasm-opt; watch excludes for build outputs; Cargo two-job cap and incremental cache; Codespaces post-create fetch + warm compile; prebuilt Trunk/wasm-bindgen CLI; native clang/lld; and a cold/incremental benchmark script.
+- Build iteration changes are committed: custom incremental `wasm-dev` profile; Trunk dev profile selection; release-only minification/wasm-opt; watch excludes for build outputs; Cargo two-job cap and incremental cache; Codespaces post-create fetch + warm compile; prebuilt Trunk/wasm-bindgen CLI; native clang/lld; and a cold/incremental benchmark script. The dependency opt-level override also applies to matching build/proc-macro crates under Cargo's package-override precedence, so cold compile cost needs measuring.
 - `[profile.release]` remains the specified memory-light release profile; `[profile.dist]` remains thin-LTO only.
 - Bevy remains `default-features = false` with explicit used features. Audio, gamepad, animation, glTF and scene defaults are not enabled. Removed only the unused `web-sys/HtmlElement` feature; no Rust crate was removed.
 - Codespaces setup installs Trunk 0.22.1 and the wasm-bindgen CLI version matching Cargo.lock, runs `cargo tree -d`, WASM duplicate-tree inspection and `cargo machete`, fetches dependencies and primes the `wasm-dev` target.
