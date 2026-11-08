@@ -14,7 +14,7 @@ async function start(): Promise<void> {
   const ui = setupConsole(simulation);
   const sceneContainer = document.getElementById("scene");
   if (!sceneContainer) throw new Error("The scene container is missing.");
-  const scene = createDeskScene(simulation, memory, sceneContainer, ui.setHover);
+  const scene = createDeskScene(simulation, memory, sceneContainer, ui.setHover, ui.setInteraction);
   let previousTime = 0;
 
   function frame(now: number): void {

@@ -262,6 +262,58 @@ impl Simulation {
         true
     }
 
+    #[wasm_bindgen(js_name = moveObject)]
+    pub fn move_object(&mut self, index: usize, x: f32, z: f32) -> bool {
+        if !x.is_finite() || !z.is_finite() || index >= self.objects.len() {
+            return false;
+        }
+        {
+            let object = &mut self.objects[index];
+            object.x = x.clamp(0.08, 9.92);
+            object.z = z.clamp(0.08, 9.92);
+        }
+        if let Some(body) = self.bodies.get_mut(index) {
+            body.vx = 0.0;
+            body.vz = 0.0;
+        }
+        true
+    }
+
+    #[wasm_bindgen(js_name = uncapObject)]
+    pub fn uncap_object(&mut self, index: usize) -> bool {
+        let Some(object) = self.objects.get_mut(index) else {
+            return false;
+        };
+        if object.kind != ObjectKind::Bottle || !object.cap_on {
+            return false;
+        }
+        object.cap_on = false;
+        self.discover_action("action.uncap");
+        true
+    }
+
+    #[wasm_bindgen(js_name = carveStroke)]
+    pub fn carve_stroke(&mut self, from_x: f32, from_z: f32, to_x: f32, to_z: f32) -> bool {
+        if ![from_x, from_z, to_x, to_z].into_iter().all(f32::is_finite)
+            || !(0.0..=10.0).contains(&from_x)
+            || !(0.0..=10.0).contains(&from_z)
+            || !(0.0..=10.0).contains(&to_x)
+            || !(0.0..=10.0).contains(&to_z)
+        {
+            return false;
+        }
+        let dx = to_x - from_x;
+        let dz = to_z - from_z;
+        if dx * dx + dz * dz < 0.0004 || self.energy < 0.025 {
+            return false;
+        }
+        self.energy -= 0.025;
+        self.carve_line((from_x, from_z), (to_x, to_z), 0.055, 0.14);
+        self.discover_action("action.carve");
+        true
+    }
+
+
     pub fn tick(&mut self, frame_seconds: f32) {
         self.accumulator += frame_seconds.clamp(0.0, 0.20);
         let mut steps = 0;
@@ -1233,6 +1285,39 @@ mod tests {
             simulation.set_keyword(id, word);
         }
         simulation
+    }
+
+    #[test]
+    fn direct_manipulation_moves_objects_and_stops_pencil_velocity() {
+        let mut simulation = ready_simulation();
+        simulation.bodies[5].vx = 1.4;
+        simulation.bodies[5].vz = -0.6;
+        assert!(simulation.move_object(5, 4.2, 6.3));
+        assert!((simulation.objects[5].x - 4.2).abs() < 0.0001);
+        assert!((simulation.objects[5].z - 6.3).abs() < 0.0001);
+        assert_eq!(simulation.bodies[5].vx, 0.0);
+        assert_eq!(simulation.bodies[5].vz, 0.0);
+        assert!(!simulation.move_object(999, 2.0, 2.0));
+        assert!(!simulation.move_object(0, f32::NAN, 2.0));
+    }
+
+    #[test]
+    fn direct_uncap_only_opens_a_capped_bottle() {
+        let mut simulation = ready_simulation();
+        assert!(simulation.uncap_object(0));
+        assert!(!simulation.objects[0].cap_on);
+        assert!(!simulation.uncap_object(0));
+        assert!(!simulation.uncap_object(5));
+    }
+
+    #[test]
+    fn direct_carve_strokes_cut_grooves_and_cost_attention() {
+        let mut simulation = ready_simulation();
+        let before = simulation.energy;
+        assert!(simulation.carve_stroke(2.0, 2.0, 3.0, 2.0));
+        assert!(simulation.energy < before);
+        assert!(simulation.height.iter().any(|height| *height < -0.01));
+        assert!(!simulation.carve_stroke(f32::NAN, 2.0, 3.0, 2.0));
     }
 
     #[test]

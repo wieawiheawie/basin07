@@ -57,14 +57,15 @@ button, input { font: inherit; }
   width: 37px; height: 37px; border-radius: 11px; font-family: Georgia, serif; font-size: 20px; line-height: 1;
 }
 .world-caption {
-  position: absolute; z-index: 2; top: 94px; left: 31px; display: flex; gap: 9px; align-items: center;
+  position: absolute; z-index: 2; top: 94px; left: 31px; right: 31px; display: flex; gap: 9px; align-items: center; flex-wrap: wrap;
   color: rgba(239,230,213,.56); font-size: 9px; letter-spacing: .16em; pointer-events: none;
 }
 .caption-dot { width: 5px; height: 5px; border-radius: 50%; background: #b7c49b; box-shadow: 0 0 8px rgba(183,196,155,.7); }
 .caption-divider { width: 23px; height: 1px; background: rgba(239,230,213,.24); }
 .hover-label { color: #e8c89c; letter-spacing: .06em; opacity: 0; transition: opacity .15s; }
 .hover-label.visible { opacity: 1; }
-.performance-label { color: rgba(239,230,213,.38); font-size: 8px; letter-spacing: .04em; white-space: nowrap; }
+.interaction-hint { color: rgba(215,202,177,.62); font-size: 8px; letter-spacing: .09em; white-space: nowrap; }
+.performance-label { color: rgba(239,230,213,.38); font-size: 8px; letter-spacing: .04em; white-space: nowrap; margin-left: auto; }
 .loading-status.complete { opacity: 0; transition: opacity 1.2s ease 1.2s; }
 .help-panel {
   position: absolute; z-index: 4; right: 28px; top: 88px; width: min(340px, calc(100% - 32px));
@@ -86,11 +87,20 @@ button, input { font: inherit; }
 .help-entry code { display: block; padding: 7px 9px; border-radius: 7px; overflow-wrap: anywhere; background: rgba(0,0,0,.22); color: #cad5ba; font-size: 9px; }
 .help-empty { color: var(--muted); font-size: 11px; }
 .command-dock {
-  position: absolute; z-index: 3; left: 50%; bottom: 22px; transform: translateX(-50%);
+  position: absolute; z-index: 5; left: 50%; bottom: 22px;
   width: min(850px, calc(100% - 36px)); padding: 14px 16px 15px;
   border: 1px solid rgba(231,219,195,.2); border-radius: 17px;
   background: var(--panel); backdrop-filter: blur(19px); box-shadow: 0 15px 55px rgba(0,0,0,.38);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 12px);
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
 }
+.command-dock.open { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); }
+.dock-actions { display: flex; align-items: center; gap: 12px; }
+.panel-close {
+  width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--ink); background: rgba(255,255,255,.035); cursor: pointer; font-size: 17px;
+}
+.panel-close:hover { background: rgba(183,196,155,.12); }
 .dock-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 9px; }
 .dock-title { display: flex; align-items: center; gap: 10px; }
 .command-symbol {
@@ -133,9 +143,13 @@ button, input { font: inherit; }
   .brand-subtitle { font-size: 8px; }
   .energy-card { width: 116px; }
   .quiet-button { display: none; }
-  .world-caption { top: 72px; left: 16px; flex-wrap: wrap; max-width: calc(100% - 32px); }
+  .world-caption { top: 72px; left: 16px; right: 16px; flex-wrap: wrap; max-width: calc(100% - 32px); gap: 7px; }
+  .interaction-hint { flex-basis: 100%; margin-left: 14px; font-size: 7px; white-space: normal; }
   .performance-label { flex-basis: 100%; margin-left: 14px; }
+  .command-toggle { display: inline-flex; }
   .command-dock { width: calc(100% - 20px); bottom: 10px; padding: 12px; }
+  .dock-actions { gap: 6px; }
+  .dock-hint { display: none; }
   .dock-hint { display: none; }
   .command-form input { font-size: 11px; }
   .enter-hint { display: none; }

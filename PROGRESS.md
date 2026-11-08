@@ -30,6 +30,16 @@
 - The repository excludes the Unity package and extracted FBX/texture files. The selective importer writes them to ignored .local-assets/; Vite embeds them in the game bundle. No .blend files are included or generated.
 - Model load failure or absent local imports keep procedural fallbacks visible.
 
+## Direct mouse interaction
+
+- The command console is an optional popup instead of the always-visible bottom dock. The wordbook remains available separately.
+- Left-drag moves world objects through the Rust/WASM object-position API.
+- Right-click picks up an object; move the pointer while holding it and right-click again to place it. Held objects lift visually.
+- Holding both mouse buttons and dragging cuts grooves into the tabletop height grid. Over the garden, the plot's subdivided soil plane is also deformed so the furrow is visible.
+- Holding both mouse buttons on a bottle uncaps it directly. The loose cap remains beside the bottle.
+- Middle-drag orbits the camera; the wheel zooms. The right button is no longer used for camera orbit.
+- Dragging, pickup and direct uncap update the same Rust simulation state used by the command interpreter.
+
 ## Existing simulation and known limits
 
 - Rust crate with a 128 × 128 height grid, fixed 60 Hz stepping, water depth grid, bottle and rain-barrel state, smallfolk positions and command energy queue.

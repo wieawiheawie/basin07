@@ -35,6 +35,10 @@ export function setupConsole(simulation: Simulation) {
   const hoverLabel = byId<HTMLDivElement>("hover-label");
   const lowButton = byId<HTMLButtonElement>("low-toggle");
   const helpButton = byId<HTMLButtonElement>("help-toggle");
+  const commandPanel = byId<HTMLElement>("command-panel");
+  const commandButton = byId<HTMLButtonElement>("commands-toggle");
+  const commandClose = byId<HTMLButtonElement>("commands-close");
+  const interactionHint = byId<HTMLSpanElement>("interaction-hint");
 
   const vocabulary = [
     ...Object.values(glossary),
@@ -168,8 +172,22 @@ export function setupConsole(simulation: Simulation) {
     } else if (event.key === "Escape") {
       suggestions.replaceChildren();
       suggestions.classList.remove("visible");
+      setCommandsOpen(false);
     }
   });
+
+  function setCommandsOpen(open: boolean): void {
+    commandPanel.classList.toggle("open", open);
+    commandButton.setAttribute("aria-expanded", String(open));
+    if (open) {
+      window.setTimeout(() => input.focus(), 60);
+    }
+  }
+
+  commandButton.addEventListener("click", () => {
+    setCommandsOpen(!commandPanel.classList.contains("open"));
+  });
+  commandClose.addEventListener("click", () => setCommandsOpen(false));
 
   helpButton.addEventListener("click", () => {
     const open = helpPanel.classList.toggle("open");
@@ -184,7 +202,7 @@ export function setupConsole(simulation: Simulation) {
     document.dispatchEvent(new CustomEvent("deskbound:graphics", { detail: { low } }));
   });
 
-  appendLog("A little world is waiting. Type list to learn the names on your desk.", "note");
+  appendLog("Left-drag to move things. Right-click to pick them up. Hold both mouse buttons to carve the tabletop or uncap a bottle.", "note");
   renderHelp();
 
   return {
@@ -205,6 +223,11 @@ export function setupConsole(simulation: Simulation) {
       hoverLabel.textContent = name;
       hoverLabel.classList.toggle("visible", name.length > 0);
       renderHelp();
+    },
+    setInteraction(message: string): void {
+      interactionHint.textContent = message.length > 0
+        ? message.toUpperCase()
+        : "LEFT-DRAG TO MOVE · RIGHT-CLICK TO PICK UP · HOLD BOTH TO CARVE / UNCAP";
     }
   };
 }

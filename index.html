@@ -24,6 +24,7 @@
             <div class="energy-track"><div id="energy-fill" class="energy-fill"></div></div>
             <div id="queue-label" class="queue-label">0 queued</div>
           </div>
+          <button id="commands-toggle" class="quiet-button command-toggle" type="button" aria-expanded="false" aria-controls="command-panel">Commands</button>
           <button id="low-toggle" class="quiet-button" type="button" aria-pressed="false">Low graphics</button>
           <button id="help-toggle" class="help-button" type="button" aria-expanded="false" aria-controls="help-panel">?</button>
         </div>
@@ -34,6 +35,7 @@
         <span>THE DESK</span>
         <span class="caption-divider"></span>
         <span id="hover-label" class="hover-label"></span>
+        <span id="interaction-hint" class="interaction-hint">LEFT-DRAG TO MOVE · RIGHT-CLICK TO PICK UP · HOLD BOTH TO CARVE / UNCAP</span>
         <span id="performance-label" class="performance-label">Scene — tris · Normal — · Low —</span>
       </div>
 
@@ -46,13 +48,16 @@
         <div id="help-list" class="help-list"></div>
       </aside>
 
-      <footer class="command-dock">
+      <footer id="command-panel" class="command-dock" aria-label="Optional command console">
         <div class="dock-heading">
           <div class="dock-title">
             <span class="command-symbol">⌁</span>
             <div><strong>Speak to the desk</strong><span>Commands are small. The world takes its time.</span></div>
           </div>
-          <span class="dock-hint">RIGHT-DRAG TO LOOK AROUND · SCROLL TO ZOOM</span>
+          <div class="dock-actions">
+            <span class="dock-hint">Scripts remain available here when you need them</span>
+            <button id="commands-close" class="panel-close" type="button" aria-label="Close commands">×</button>
+          </div>
         </div>
         <div class="prompt-log" id="prompt-log" aria-live="polite"></div>
         <form id="command-form" class="command-form" autocomplete="off">

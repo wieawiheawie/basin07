@@ -8,6 +8,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import type { Simulation } from "../pkg/deskbound_sim.js";
 
 type HoverCallback = (name: string) => void;
+type InteractionCallback = (message: string) => void;
 
 interface SceneApi {
   sync(): void;
@@ -129,7 +130,8 @@ function createDeskScene(
   simulation: Simulation,
   memory: WebAssembly.Memory,
   container: HTMLElement,
-  onHover: HoverCallback
+  onHover: HoverCallback,
+  onInteraction: InteractionCallback
 ): SceneApi {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#28231e");
@@ -535,6 +537,8 @@ function createDeskScene(
     return { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind: "pencil" };
   }
 
+  let gardenSoilMesh: THREE.Mesh | null = null;
+
   function makeGarden(): ObjectVisual {
     const root = new THREE.Group();
     const frameMaterial = new THREE.MeshStandardMaterial({ color: "#896b4e", roughness: 0.92 });
@@ -542,10 +546,13 @@ function createDeskScene(
     plot.position.y = 0.11;
     plot.castShadow = true;
     root.add(plot);
-    const soil = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.075, 1.24), soilMat);
-    soil.position.y = 0.225;
-    soil.receiveShadow = true;
-    root.add(soil);
+    const soilGeometry = new THREE.PlaneGeometry(1.56, 1.24, 32, 24);
+    soilGeometry.rotateX(-Math.PI / 2);
+    gardenSoilMesh = new THREE.Mesh(soilGeometry, soilMat);
+    gardenSoilMesh.position.y = 0.205;
+    gardenSoilMesh.receiveShadow = true;
+    gardenSoilMesh.userData.gardenSoil = true;
+    root.add(gardenSoilMesh);
     const sproutGeometry = new THREE.ConeGeometry(0.09, 0.34, 5);
     for (let i = 0; i < 9; i += 1) {
       const x = ((i % 3) - 1) * 0.42;
@@ -618,6 +625,7 @@ function createDeskScene(
     }
     visual.root.userData.label = simulation.objectName(index);
     visual.root.userData.objectIndex = index;
+    visual.root.userData.baseY = y;
     scene.add(visual.root);
     pickables.push(visual.root);
     objectVisuals.push(visual);
@@ -744,6 +752,7 @@ function createDeskScene(
           for (const visual of objectVisuals) {
             if (["tankard","mug","bread_basket","cheese_wheel","candle","lantern"].includes(visual.kind)) {
               visual.root.position.y = TAVERN_TABLE_Y;
+              visual.root.userData.baseY = TAVERN_TABLE_Y;
             }
           }
         }
@@ -771,14 +780,14 @@ function createDeskScene(
             for (let row = 0; row < rows; row += 1) {
               for (let column = 0; column < columns; column += 1) {
                 offset.makeTranslation((column - 0.5) * 0.38, 0, (row - 3) * 0.12);
-                matrix.multiplyMatrices(target.matrixWorld, offset).multiply(modelBasis).multiply(relative);
+                matrix.copy(offset).multiply(modelBasis).multiply(relative);
                 instances.setMatrixAt(instanceIndex, matrix);
                 instanceIndex += 1;
               }
             }
             instances.instanceMatrix.needsUpdate = true;
             instances.computeBoundingSphere();
-            scene.add(instances);
+            target.add(instances);
           });
           for (const child of target.children.slice()) {
             if (child.userData.proceduralFallback === true) target.remove(child);
@@ -787,7 +796,7 @@ function createDeskScene(
           proxy.userData.performanceIgnore = true;
           proxy.position.y = 0.14;
           target.add(proxy);
-        } else if (targets.length >= 3) {
+        } else if (targets.length >= 6) {
           const matrix = new THREE.Matrix4();
           source.traverse((part) => {
             if (!(part instanceof THREE.Mesh)) return;
@@ -927,63 +936,266 @@ function createDeskScene(
   composer.addPass(new OutputPass());
 
   const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
   const pointerEvent = new THREE.Vector2();
+  const deskPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.431);
+  const pointerWorld = new THREE.Vector3();
+  const heldLift = 0.42;
   let hoveredRoot: THREE.Object3D | null = null;
-  renderer.domElement.addEventListener("pointermove", (event) => {
+  let dragIndex = -1;
+  let heldIndex = -1;
+  let cameraDragging = false;
+  let previousX = 0;
+  let previousY = 0;
+  let objectOffsetX = 0;
+  let objectOffsetZ = 0;
+  let combinedMode: "carve" | "uncap" | null = null;
+  let lastCarvePoint: THREE.Vector3 | null = null;
+  let lastCarveWasGarden = false;
+  const gardenLocalA = new THREE.Vector3();
+  const gardenLocalB = new THREE.Vector3();
+
+  function updatePointerRay(event: PointerEvent): void {
     const rect = renderer.domElement.getBoundingClientRect();
-    pointerEvent.set((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    pointerEvent.set(
+      (event.clientX - rect.left) / rect.width * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
     raycaster.setFromCamera(pointerEvent, camera);
+  }
+
+  function rootHit(): { root: THREE.Object3D; point: THREE.Vector3 } | null {
     const hit = raycaster.intersectObjects(pickables, true)[0];
-    let root: THREE.Object3D | null = hit?.object ?? null;
-    while (root && !root.userData.label) root = root.parent;
-    if (root !== hoveredRoot) {
-      hoveredRoot = root;
-      onHover(root ? String(root.userData.label) : "");
-      if (root) {
-        const kind = objectVisuals[Number(root.userData.objectIndex)]?.kind;
-        if (kind === "bottle") {
-          simulation.discoverAction("action.uncap");
-          simulation.discoverAction("action.tip");
-          simulation.discoverAction("action.upright");
-          simulation.discoverAction("action.look");
-        } else if (kind === "barrel") {
-          simulation.discoverAction("action.tap");
-          simulation.discoverAction("action.look");
+    if (!hit) return null;
+    let root: THREE.Object3D | null = hit.object;
+    while (root && root.userData.objectIndex === undefined) root = root.parent;
+    return root ? { root, point: hit.point } : null;
+  }
+
+  function pointerDeskPosition(): boolean {
+    return raycaster.ray.intersectPlane(deskPlane, pointerWorld) !== null;
+  }
+
+  function moveFromPointer(index: number): void {
+    if (index < 0 || !pointerDeskPosition()) return;
+    simulation.moveObject(
+      index,
+      pointerWorld.x + 5 + objectOffsetX,
+      pointerWorld.z + 5 + objectOffsetZ
+    );
+  }
+
+  function carveSurfaceHit(): { point: THREE.Vector3; garden: boolean } | null {
+    const hit = rootHit();
+    if (hit && objectVisuals[Number(hit.root.userData.objectIndex)]?.kind === "garden") {
+      return { point: hit.point.clone(), garden: true };
+    }
+    const ground = raycaster.intersectObject(terrain, false)[0];
+    return ground ? { point: ground.point.clone(), garden: false } : null;
+  }
+
+  function carveGardenSegment(from: THREE.Vector3, to: THREE.Vector3): void {
+    if (!gardenSoilMesh) return;
+    gardenSoilMesh.updateWorldMatrix(true, false);
+    gardenLocalA.copy(gardenSoilMesh.worldToLocal(from.clone()));
+    gardenLocalB.copy(gardenSoilMesh.worldToLocal(to.clone()));
+    const position = gardenSoilMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const ax = gardenLocalA.x;
+    const az = gardenLocalA.z;
+    const dx = gardenLocalB.x - ax;
+    const dz = gardenLocalB.z - az;
+    const lengthSq = dx * dx + dz * dz;
+    const radius = 0.105;
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      const x = position.getX(vertex);
+      const z = position.getZ(vertex);
+      const t = lengthSq > 0.000001
+        ? THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / lengthSq, 0, 1)
+        : 0;
+      const nearestX = ax + dx * t;
+      const nearestZ = az + dz * t;
+      const distance = Math.hypot(x - nearestX, z - nearestZ);
+      if (distance >= radius) continue;
+      const falloff = 1 - (distance / radius) ** 2;
+      position.setY(vertex, Math.max(-0.075, position.getY(vertex) - 0.034 * falloff));
+    }
+    position.needsUpdate = true;
+    gardenSoilMesh.geometry.computeVertexNormals();
+  }
+
+  function beginCombinedGesture(): void {
+    dragIndex = -1;
+    heldIndex = -1;
+    const hit = rootHit();
+    if (hit) {
+      const index = Number(hit.root.userData.objectIndex);
+      const visual = objectVisuals[index];
+      if (visual?.kind === "bottle") {
+        combinedMode = "uncap";
+        if (simulation.uncapObject(index)) {
+          onInteraction("Uncapped " + simulation.objectName(index) + " — its cap is loose on the desk.");
         } else {
-          simulation.discoverAction("action.look");
+          onInteraction(simulation.objectName(index) + " is already uncapped.");
         }
-      } else if (hit) {
-        simulation.discoverAction("action.carve");
+        return;
+      }
+    }
+    combinedMode = "carve";
+    lastCarvePoint = null;
+    const surface = carveSurfaceHit();
+    if (surface) {
+      lastCarvePoint = surface.point;
+      lastCarveWasGarden = surface.garden;
+      onInteraction(surface.garden
+        ? "Carving a shallow furrow in the garden soil."
+        : "Carving a groove into the tabletop.");
+    }
+  }
+
+  function continueCombinedGesture(): void {
+    if (combinedMode === null) beginCombinedGesture();
+    if (combinedMode !== "carve") return;
+    const surface = carveSurfaceHit();
+    if (!surface) return;
+    if (!lastCarvePoint) {
+      lastCarvePoint = surface.point;
+      lastCarveWasGarden = surface.garden;
+      return;
+    }
+    const dx = surface.point.x - lastCarvePoint.x;
+    const dz = surface.point.z - lastCarvePoint.z;
+    if (dx * dx + dz * dz < 0.00035) return;
+    if (simulation.carveStroke(
+      lastCarvePoint.x + 5, lastCarvePoint.z + 5,
+      surface.point.x + 5, surface.point.z + 5
+    )) {
+      if (lastCarveWasGarden && surface.garden) carveGardenSegment(lastCarvePoint, surface.point);
+    }
+    lastCarvePoint.copy(surface.point);
+    lastCarveWasGarden = surface.garden;
+  }
+
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    updatePointerRay(event);
+
+    if ((event.buttons & 3) === 3) {
+      continueCombinedGesture();
+      return;
+    }
+    if (combinedMode !== null) {
+      combinedMode = null;
+      lastCarvePoint = null;
+    }
+
+    if (cameraDragging && (event.buttons & 4) === 4) {
+      const dx = event.clientX - previousX;
+      const dy = event.clientY - previousY;
+      previousX = event.clientX;
+      previousY = event.clientY;
+      cameraAzimuth -= dx * 0.006;
+      cameraElevation = THREE.MathUtils.clamp(cameraElevation - dy * 0.004, 0.55, 1.48);
+      updateCamera();
+    } else if (dragIndex >= 0 && (event.buttons & 1) === 1) {
+      moveFromPointer(dragIndex);
+    } else if (heldIndex >= 0) {
+      moveFromPointer(heldIndex);
+    }
+
+    if (dragIndex < 0 && heldIndex < 0 && !cameraDragging) {
+      const hit = rootHit();
+      const root = hit?.root ?? null;
+      if (root !== hoveredRoot) {
+        hoveredRoot = root;
+        onHover(root ? String(root.userData.label) : "");
+        if (root) {
+          const kind = objectVisuals[Number(root.userData.objectIndex)]?.kind;
+          renderer.domElement.style.cursor = "grab";
+          if (kind === "bottle") {
+            simulation.discoverAction("action.uncap");
+            simulation.discoverAction("action.tip");
+            simulation.discoverAction("action.upright");
+            simulation.discoverAction("action.look");
+          } else if (kind === "barrel") {
+            simulation.discoverAction("action.tap");
+            simulation.discoverAction("action.look");
+          } else {
+            simulation.discoverAction("action.look");
+          }
+        } else {
+          renderer.domElement.style.cursor = "default";
+          if (raycaster.intersectObject(terrain, false).length > 0) {
+            simulation.discoverAction("action.carve");
+          }
+        }
       }
     }
   });
 
-  // Only the secondary mouse button orbits. The world has no direct manipulation.
-  let dragging = false;
-  let previousX = 0;
-  let previousY = 0;
   renderer.domElement.addEventListener("pointerdown", (event) => {
-    if (event.button !== 2) return;
-    dragging = true;
-    previousX = event.clientX;
-    previousY = event.clientY;
+    updatePointerRay(event);
     renderer.domElement.setPointerCapture(event.pointerId);
+    if ((event.buttons & 3) === 3) {
+      beginCombinedGesture();
+      return;
+    }
+    if (event.button === 1) {
+      cameraDragging = true;
+      previousX = event.clientX;
+      previousY = event.clientY;
+      event.preventDefault();
+      return;
+    }
+    if (event.button === 0) {
+      if (heldIndex >= 0) return;
+      const hit = rootHit();
+      if (!hit) return;
+      dragIndex = Number(hit.root.userData.objectIndex);
+      renderer.domElement.style.cursor = "grabbing";
+      const index = dragIndex;
+      if (pointerDeskPosition()) {
+        objectOffsetX = simulation.objectX(index) - (pointerWorld.x + 5);
+        objectOffsetZ = simulation.objectZ(index) - (pointerWorld.z + 5);
+      }
+      onInteraction("Moving " + simulation.objectName(index) + ". Release to place it.");
+      return;
+    }
+    if (event.button === 2) {
+      if (heldIndex >= 0) {
+        const name = simulation.objectName(heldIndex);
+        heldIndex = -1;
+        onInteraction("Placed " + name + ".");
+        return;
+      }
+      const hit = rootHit();
+      if (!hit) return;
+      heldIndex = Number(hit.root.userData.objectIndex);
+      renderer.domElement.style.cursor = "grabbing";
+      if (pointerDeskPosition()) {
+        objectOffsetX = simulation.objectX(heldIndex) - (pointerWorld.x + 5);
+        objectOffsetZ = simulation.objectZ(heldIndex) - (pointerWorld.z + 5);
+      }
+      onInteraction("Picked up " + simulation.objectName(heldIndex) + ". Right-click again to put it down.");
+    }
   });
+
   renderer.domElement.addEventListener("pointerup", (event) => {
-    if (event.button === 2) dragging = false;
+    if (event.button === 0) {
+      if (dragIndex >= 0) onInteraction("Placed " + simulation.objectName(dragIndex) + ".");
+      dragIndex = -1;
+      if (heldIndex < 0) renderer.domElement.style.cursor = "default";
+    }
+    if (event.button === 1) cameraDragging = false;
+    if ((event.buttons & 3) !== 3) {
+      combinedMode = null;
+      lastCarvePoint = null;
+    }
   });
-  renderer.domElement.addEventListener("pointercancel", () => { dragging = false; });
-  renderer.domElement.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-    const dx = event.clientX - previousX;
-    const dy = event.clientY - previousY;
-    previousX = event.clientX;
-    previousY = event.clientY;
-    cameraAzimuth -= dx * 0.006;
-    cameraElevation = THREE.MathUtils.clamp(cameraElevation - dy * 0.004, 0.55, 1.48);
-    updateCamera();
+  renderer.domElement.addEventListener("pointercancel", () => {
+    dragIndex = -1;
+    cameraDragging = false;
+    combinedMode = null;
+    lastCarvePoint = null;
   });
+
   renderer.domElement.addEventListener("wheel", (event) => {
     event.preventDefault();
     cameraDistance = THREE.MathUtils.clamp(cameraDistance + event.deltaY * 0.009, 11.5, 27);
@@ -1050,11 +1262,21 @@ function createDeskScene(
         if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
 
         const transformOffset = index * 16;
+        const lift = heldIndex === index ? heldLift : 0;
         if (visual.kind === "bottle" || visual.kind === "book" ||
             visual.kind === "pencil" || visual.kind === "garden") {
           visual.root.matrix.fromArray(objectTransformsView, transformOffset);
+          visual.root.matrix.elements[13] += lift;
           visual.root.matrixAutoUpdate = false;
           visual.root.matrixWorldNeedsUpdate = true;
+        } else {
+          visual.root.position.x = objectTransformsView[transformOffset + 12] ?? 0;
+          visual.root.position.z = objectTransformsView[transformOffset + 14] ?? 0;
+          visual.root.position.y = Number(visual.root.userData.baseY ?? 0.36) + lift;
+          visual.root.rotation.y = Math.atan2(
+            objectTransformsView[transformOffset + 8] ?? 0,
+            objectTransformsView[transformOffset] ?? 1
+          );
         }
 
         if (visual.kind === "bottle") {
@@ -1064,7 +1286,7 @@ function createDeskScene(
           if (!capped) {
             const bottleX = objectTransformsView[transformOffset + 12] ?? 0;
             const bottleZ = objectTransformsView[transformOffset + 14] ?? 0;
-            visual.looseCap.position.set(bottleX + 0.28, 0.41, bottleZ + 0.18);
+            visual.looseCap.position.set(bottleX + 0.28, 0.41 + lift, bottleZ + 0.18);
             visual.looseCap.rotation.set(0, 0.18, Math.PI / 2);
           }
           const amount = simulation.objectVolume(index) / 0.14;
