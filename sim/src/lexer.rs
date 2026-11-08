@@ -1,10 +1,20 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Word(String),
+    QuotedString(String),
     Number(f32),
     LeftParen,
     RightParen,
     Comma,
+    Semicolon,
+    LeftBrace,
+    RightBrace,
+    Equals,
+    Arrow,
+    LessThan,
+    GreaterThan,
+    Percent,
+    Dot,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +36,45 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
             ',' => TokenKind::Comma,
+            ';' => TokenKind::Semicolon,
+            '{' => TokenKind::LeftBrace,
+            '}' => TokenKind::RightBrace,
+            '=' => TokenKind::Equals,
+            '<' => TokenKind::LessThan,
+            '>' => TokenKind::GreaterThan,
+            '%' => TokenKind::Percent,
+            '.' if !matches!(chars.peek(), Some((_, next)) if next.is_ascii_digit()) => TokenKind::Dot,
+            '-' if matches!(chars.peek(), Some((_, '>'))) => {
+                chars.next();
+                TokenKind::Arrow
+            }
+            '\'' | '"' => {
+                let quote = ch;
+                let mut value = String::new();
+                let mut closed = false;
+                while let Some((_, next)) = chars.next() {
+                    if next == quote {
+                        closed = true;
+                        break;
+                    }
+                    if next == '\\' {
+                        let Some((_, escaped)) = chars.next() else {
+                            break;
+                        };
+                        value.push(match escaped {
+                            'n' => '\n',
+                            't' => '\t',
+                            other => other,
+                        });
+                    } else {
+                        value.push(next);
+                    }
+                }
+                if !closed {
+                    return Err(format!("The quoted value starting at character {} was never closed.", offset + 1));
+                }
+                TokenKind::QuotedString(value)
+            }
             '-' | '0'..='9' | '.' => {
                 let mut number = String::new();
                 number.push(ch);
@@ -121,5 +170,22 @@ mod tests {
     fn accepts_underscored_object_names() {
         let tokens = lex("bottle_2").unwrap();
         assert_eq!(tokens[0].kind, TokenKind::Word("bottle_2".to_owned()));
+    }
+
+    #[test]
+    fn lexes_script_structure_and_quoted_colours() {
+        let tokens = lex("repeat 5 { paint pencil_1 'red' ; pencil_1 -> roll_east }").unwrap();
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Semicolon));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Arrow));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::LeftBrace));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::QuotedString("red".to_owned())));
+    }
+
+    #[test]
+    fn distinguishes_decimal_points_from_condition_dots() {
+        let tokens = lex("garden.moisture < 20% and 0.25").unwrap();
+        assert_eq!(tokens[1].kind, TokenKind::Dot);
+        assert_eq!(tokens[5].kind, TokenKind::Percent);
+        assert_eq!(tokens[7].kind, TokenKind::Number(0.25));
     }
 }
