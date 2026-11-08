@@ -40,16 +40,22 @@ rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
 ```
 
-Run the memory-light release client in Codespaces:
+Fast browser iteration uses the incremental `wasm-dev` Cargo profile:
 
 ```bash
-trunk serve --release
+trunk serve
 ```
 
-Build the default WebGL2 site:
+The normal optimized WebGL2 release is a separate, slower build:
 
 ```bash
 trunk build --release
+```
+
+The final thin-LTO distribution build uses its separate Trunk configuration:
+
+```bash
+trunk --config Trunk.dist.toml build --release
 ```
 
 The `webgpu` Cargo feature is a separate backend selection. Build/test the Rust target with the feature selection below; Trunk packaging must use the same feature selection when producing the browser artifact:

@@ -5,41 +5,46 @@
 ## Current status — 2026-11-08
 
 - Repository: https://github.com/wieawiheawie/basin07, branch `main`.
-- Existing simulation core, data files and 19-test Rust suite are retained.
-- Milestone 1 scene is implemented: low-poly ground, 18×14 shared-mesh construction grid, 3D camera, five service markers, machine selection and click-to-place.
-- `R` rotates the selected machine in 90° steps. The stored simulation rotation is now applied to the rendered machine. Backspace restarts the site.
-- Release profile is the requested memory-light configuration: `opt-level = "s"`, `lto = false`, `codegen-units = 16`, `panic = "abort"`, `strip = true`, `debug = false`. `profile.dist` inherits release and uses thin LTO.
-- Bevy 0.20.1 remains the renderer. It passed WASM check/build and Trunk packaging in GitHub Actions; no renderer rewrite is justified yet.
-- **Last verified parent commit:** `fe1cdfa818560770bbd1d3afb7344e9fd00a10fc`; GitHub Actions run [#48](https://github.com/wieawiheawie/basin07/actions/runs/42438783108) succeeded.
-- **Run #48 passed:** Python content/economy validator; Rust formatting; all 19 Rust unit tests; Rust headless validator; WASM `cargo check`; WASM release build; `trunk build --release`; and separate thin-LTO distribution packaging.
-- **WASM sizes from run #48:** pre-Trunk 90,295,893 bytes raw / 14,475,783 bytes gzip; regular release 30,131,532 / 9,006,989; dist build 30,446,751 / 9,015,782.
-- These are hosted-runner results, **not** proof of the user's 7.8 GB/no-swap Codespace limit. That environment and the actual browser runtime still need a smoke test.
-- CI is now scoped to content validation, formatting, Rust tests, headless validator and WASM `cargo check`; it no longer runs the long release build or Trunk packaging. The first run on commit `081a8c12` stopped at a rustfmt-only layout difference in the rotation expression before the Rust tests; that formatting has now been corrected and the rerun is pending.
-- **Milestone 1 status:** scene/placement source and an earlier Trunk release artifact are verified. Final confirmation is pending `trunk serve --release` in the user's Codespace.
+- Milestone 1 scene and Trunk release artifact remain; the user's Codespace browser smoke test is still pending.
+- Build iteration changes are committed: custom incremental `wasm-dev` profile; Trunk dev profile selection; release-only minification/wasm-opt; watch excludes for build outputs; Cargo two-job cap and incremental cache; Codespaces post-create fetch + warm compile; prebuilt Trunk/wasm-bindgen CLI; native clang/lld; and a cold/incremental benchmark script.
+- `[profile.release]` remains the specified memory-light release profile; `[profile.dist]` remains thin-LTO only.
+- Bevy remains `default-features = false` with explicit used features. Audio, gamepad, animation, glTF and scene defaults are not enabled. Removed only the unused `web-sys/HtmlElement` feature; no Rust crate was removed.
+- Codespaces setup installs Trunk 0.22.1 and the wasm-bindgen CLI version matching Cargo.lock, runs `cargo tree -d`, WASM duplicate-tree inspection and `cargo machete`, fetches dependencies and primes the `wasm-dev` target.
+- Last fully verified quick CI is commit `75a812e21c949411ecabdeccb8b9572f6c886e05`, run [#50](https://github.com/wieawiheawie/basin07/actions/runs/42460120938): content validator, formatting, all 19 Rust tests, headless validator passed.
+- Later optimization commits are not considered green until their own Actions checks pass.
+- Historical hosted-runner baseline from run #48: release WASM compile 5m30; Trunk source installation about 5m26; release Trunk packaging about 62s; regular release WASM 30,131,532 raw / 9,006,989 gzip.
+- **No target Codespace before/after cold build, one-line incremental build, or peak RSS has been measured yet.** Run `bash scripts/bench-build.sh` in the actual 2-core/7.8 GB Codespace; `BUILD.md` documents the protocol and clearly separates hosted-runner observations from target measurements.
 
 ## Exact Codespace commands
 
-Run from the repository root:
+After pulling latest `main`:
 
 ```bash
 git pull --ff-only origin main
-trunk serve --release
+bash .devcontainer/setup.sh
+trunk serve
 ```
 
-Open the forwarded port **8080**. Test: press **Space** to open the lease, press **1** to select the Well Pump, then left-click an empty grid tile. Select the placed machine and press **R** to rotate it. **WASD** moves the camera target, **Q/E** orbits, and **+/-** zooms.
+Open forwarded port **8080**. For measured cold/incremental build performance, stop Trunk first and run:
 
-Paste the complete `trunk serve --release` terminal output, plus whether the 3D plot appeared and whether the Well Pump could be placed and rotated. Do not mark Milestone 1 fully browser-verified until this is confirmed.
+```bash
+bash scripts/bench-build.sh
+```
 
-## Milestone tracker
+Use `trunk build --release` for the regular optimized release, and `trunk --config Trunk.dist.toml build --release` for the final thin-LTO distribution. Do not add `--release` to the everyday dev loop.
 
-- [x] Milestone 1 source: ground plane, 3D camera, construction grid, service markers, placeable machine and selection.
-- [x] Milestone 1 Trunk release artifact: packaging passed on GitHub Actions run #48.
-- [ ] Milestone 1 Codespace/browser smoke test: awaiting the user's `trunk serve --release` output and interaction confirmation.
-- [ ] Milestone 2: grid placement and typed physical networks with visible flow.
-- [ ] Milestone 3: starter lithium chain, shipping and money loop.
-- [ ] Milestone 4: preset controller and sandboxed Rhai editor wired to sensors/actuators.
-- [ ] Milestone 5: market, pollution, wear and visible failure explanations.
-- [ ] Milestone 6: visual polish and data-driven content expansion.
+## Build optimization tracker
+
+- [x] Dedicated `wasm-dev` profile: client opt-level 1, dependencies opt-level 3, debug info off, incremental on.
+- [x] Trunk dev asset selects `wasm-dev`; release-only wasm-opt/minification remain out of `trunk serve`.
+- [x] Trunk ignores target/output directories while watching.
+- [x] Codespaces post-create installs prebuilt tools, audits dependencies, fetches crates and warms the wasm target.
+- [x] CI caches Cargo artifacts and remains limited to validators, formatting, tests, duplicate-dependency view and WASM check.
+- [x] Native Linux linker selects clang/lld; WebAssembly uses Rust's bundled rust-lld.
+- [x] Benchmark script records cold/warm one-line build time, peak RSS and WASM raw/gzip sizes.
+- [ ] Run benchmark on the actual Codespace and enter measured values in `BUILD.md`.
+- [ ] Review actual `cargo tree -d`, WASM duplicate graph and cargo-machete output; unify/remove only when safely proven.
+- [ ] Consider a sim/client workspace split only if measured incremental results show a meaningful benefit.
 
 ## Known modelling limitations (not build blockers)
 

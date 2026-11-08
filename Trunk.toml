@@ -5,7 +5,7 @@ target = "index.html"
 dist = "dist"
 public_url = "./"
 filehash = false
-minify = "never"
+minify = "on_release"
 
 [watch]
 ignore = ["target", "dist", "dist-deploy", ".git", ".venv", "__pycache__"]
