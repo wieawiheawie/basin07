@@ -678,6 +678,7 @@ function createDeskScene(
               if (child.userData.proceduralFallback === true) target.remove(child);
             }
             const hitProxy = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.28, 8), hitMaterial);
+            hitProxy.userData.performanceIgnore = true;
             hitProxy.position.y = 0.14;
             target.add(hitProxy);
           }
@@ -863,7 +864,7 @@ function createDeskScene(
   function updateSceneTriangleCount(): void {
     let triangles = 0;
     scene.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
+      if (!(object instanceof THREE.Mesh) || object.userData.performanceIgnore === true) return;
       const position = object.geometry.getAttribute("position");
       const available = object.geometry.index?.count ?? position?.count ?? 0;
       const rangeCount = object.geometry.drawRange.count;
