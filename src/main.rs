@@ -1,4 +1,4 @@
-use basin07::game::BasinGamePlugin;
+use basin07_core::game::BasinGamePlugin;
 use bevy::prelude::*;
 
 fn run_game() {
