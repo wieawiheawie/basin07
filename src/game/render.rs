@@ -1,26 +1,26 @@
 use super::GameSession;
 use super::controls::MainCamera;
-use crate::sim::catalog::{Endpoint, LineKind, MachineKind, ServicePort};
+use crate::sim::catalog::{LineKind, MachineKind, ServicePort};
 use crate::sim::network::{GridPos, endpoint_position};
 use bevy::prelude::*;
 use std::collections::BTreeMap;
 
 #[derive(Component)]
-struct MachineVisual(u32);
+pub(crate) struct MachineVisual(pub(crate) u32);
 
 #[derive(Component)]
-struct PipeVisual(usize);
+pub(crate) struct PipeVisual(pub(crate) usize);
 
 #[derive(Resource)]
-struct SceneAssets {
-    machine_meshes: Vec<Handle<Mesh>>,
-    pipe_mesh: Handle<Mesh>,
+pub(crate) struct SceneAssets {
+    pub(crate) machine_meshes: Vec<Handle<Mesh>>,
+    pub(crate) pipe_mesh: Handle<Mesh>,
 }
 
 #[derive(Resource, Default)]
-struct VisualRegistry {
-    machine_entities: BTreeMap<u32, Entity>,
-    pipe_entities: Vec<Entity>,
+pub(crate) struct VisualRegistry {
+    pub(crate) machine_entities: BTreeMap<u32, Entity>,
+    pub(crate) pipe_entities: Vec<Entity>,
 }
 
 pub fn setup_scene(
