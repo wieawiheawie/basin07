@@ -7,6 +7,7 @@ description = "A real-time 3D geothermal DLE factory simulation for the browser"
 license = "MIT"
 
 [lib]
+name = "basin07_core"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
