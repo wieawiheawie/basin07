@@ -1037,10 +1037,12 @@ impl Simulation {
             if body.grabbed {
                 // The pointer acts as a spring target. Heavy bodies lag behind and retain
                 // momentum, while light objects follow quickly.
-                let force_x = (body.grab_x - object.x) * 34.0 - body.vx * 10.5;
-                let force_z = (body.grab_z - object.z) * 34.0 - body.vz * 10.5;
-                body.vx += (force_x * inverse_mass).clamp(-22.0, 22.0) * dt;
-                body.vz += (force_z * inverse_mass).clamp(-22.0, 22.0) * dt;
+                // Clamp force before dividing by mass. A lighter body therefore
+                // accelerates more strongly than a heavy one for the same grab offset.
+                let force_x = ((body.grab_x - object.x) * 34.0 - body.vx * 10.5).clamp(-2.0, 2.0);
+                let force_z = ((body.grab_z - object.z) * 34.0 - body.vz * 10.5).clamp(-2.0, 2.0);
+                body.vx += force_x * inverse_mass * dt;
+                body.vz += force_z * inverse_mass * dt;
             } else {
                 body.vx += (-slope_x * 0.55 + water_vx * 1.35) * dt;
                 body.vz += (-slope_z * 0.55 + water_vz * 1.35) * dt;
@@ -1906,16 +1908,18 @@ mod tests {
         let bottle = 0;
         let pencil = 5;
         assert!(simulation.begin_grab(bottle, 2.0, 7.3));
-        assert!(simulation.set_grab_target(bottle, 4.0, 7.3));
-        for _ in 0..30 { simulation.fixed_step(FIXED_STEP); }
-        assert!(simulation.objects[bottle].x > 2.1);
+        assert!(simulation.set_grab_target(bottle, 3.0, 7.3));
+        assert!(simulation.begin_grab(pencil, 1.3, 4.3));
+        assert!(simulation.set_grab_target(pencil, 2.3, 4.3));
+
+        // Equal one-unit pointer offsets should accelerate the light pencil faster.
+        simulation.update_rigid_bodies(FIXED_STEP);
+        assert!(simulation.bodies[pencil].vx > simulation.bodies[bottle].vx * 2.5);
+        let bottle_before_release = simulation.objects[bottle].x;
         assert!(simulation.release_grab(bottle));
         assert!(simulation.bodies[bottle].vx > 0.0);
-
-        assert!(simulation.begin_grab(pencil, 1.3, 4.3));
-        assert!(simulation.set_grab_target(pencil, 4.0, 4.3));
-        for _ in 0..30 { simulation.fixed_step(FIXED_STEP); }
-        assert!(simulation.objects[pencil].x > simulation.objects[bottle].x - 0.5);
+        simulation.update_rigid_bodies(FIXED_STEP);
+        assert!(simulation.objects[bottle].x > bottle_before_release);
     }
 
     #[test]
