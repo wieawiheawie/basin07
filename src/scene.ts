@@ -437,6 +437,14 @@ function createDeskScene(
   const leadGeometry = new THREE.ConeGeometry(0.035, 0.15, 6);
   const objectVisuals: ObjectVisual[] = [];
   const pickables: THREE.Object3D[] = [];
+  const paintPalette = [
+    new THREE.Color("#c45a4b"), new THREE.Color("#4f78b5"), new THREE.Color("#70945e"),
+    new THREE.Color("#d4ae4d"), new THREE.Color("#916445"), new THREE.Color("#8971ad"),
+    new THREE.Color("#e4dfd0"), new THREE.Color("#35383c")
+  ];
+  const paintOriginals = new WeakMap<THREE.Material, THREE.Color>();
+  const appliedObjectColours = new Uint8Array(simulation.objectCount());
+  appliedObjectColours.fill(255);
 
   function makeBottle(index: number): ObjectVisual {
     const root = new THREE.Group();
@@ -587,11 +595,46 @@ function createDeskScene(
       : 0.36;
     visual.root.position.set(simulation.objectX(index) - 5, y, simulation.objectZ(index) - 5);
     visual.root.rotation.y = simulation.objectYaw(index);
+    if (kind === "pencil" || kind === "book" || kind === "bottle") {
+      visual.root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        if (Array.isArray(child.material)) {
+          child.material = child.material.map((material) => material.clone());
+        } else {
+          child.material = child.material.clone();
+        }
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
+            paintOriginals.set(material, material.color.clone());
+          }
+        }
+      });
+    }
     visual.root.userData.label = simulation.objectName(index);
     visual.root.userData.objectIndex = index;
     scene.add(visual.root);
     pickables.push(visual.root);
     objectVisuals.push(visual);
+  }
+
+  function applyObjectColour(index: number, colourIndex: number): void {
+    if (appliedObjectColours[index] === colourIndex) return;
+    appliedObjectColours[index] = colourIndex;
+    const visual = objectVisuals[index];
+    if (!visual) return;
+    const tint = colourIndex === 0 ? null : paintPalette[colourIndex - 1];
+    visual.root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial)) continue;
+        const original = paintOriginals.get(material);
+        if (!original) continue;
+        if (tint) material.color.copy(original).lerp(tint, 0.76);
+        else material.color.copy(original);
+      }
+    });
   }
 
   function warmGrade(model: THREE.Group, modelId: string): void {
@@ -892,6 +935,20 @@ function createDeskScene(
       for (let index = 0; index < objectVisuals.length; index += 1) {
         const visual = objectVisuals[index];
         if (!visual) continue;
+        const colourIndex = simulation.objectColour(index);
+        if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
+
+        if (visual.kind === "pencil") {
+          const worldX = simulation.objectX(index);
+          const worldZ = simulation.objectZ(index);
+          const gridX = Math.round(worldX / DESK_SIZE * (GRID - 1));
+          const gridZ = Math.round(worldZ / DESK_SIZE * (GRID - 1));
+          const gridIndex = THREE.MathUtils.clamp(gridZ, 0, GRID - 1) * GRID
+            + THREE.MathUtils.clamp(gridX, 0, GRID - 1);
+          visual.root.position.set(worldX - 5, 0.36 + (heightView[gridIndex] ?? 0), worldZ - 5);
+          visual.root.rotation.y = simulation.objectYaw(index);
+        }
+
         if (visual.kind === "bottle") {
           visual.root.rotation.y = simulation.objectYaw(index);
           visual.root.rotation.z = simulation.objectTilt(index);

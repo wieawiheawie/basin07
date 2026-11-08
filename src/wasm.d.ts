@@ -28,6 +28,9 @@ declare module "*deskbound_sim.js" {
     objectTilt(index: number): number;
     objectYaw(index: number): number;
     objectVolume(index: number): number;
+    objectColour(index: number): number;
+    objectVelocityX(index: number): number;
+    objectVelocityZ(index: number): number;
     waterVolume(): number;
   }
 

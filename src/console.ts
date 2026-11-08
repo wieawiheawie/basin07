@@ -9,7 +9,10 @@ const HELP_TEXT: Record<string, string> = {
   "action.tip": "Tip an uncapped bottle; add a target after the toward word to aim it.",
   "action.upright": "Return a bottle to its standing position.",
   "action.look": "Read an object's state and desk coordinates.",
-  "action.help": "List the command words you have discovered so far.",
+  "action.paint": "Recolour a movable object with red, blue, green, yellow, brown, purple, white or black.",
+  "action.roll_east": "Give a pencil an eastward push; slopes and flowing water affect its motion.",
+  "action.shift_down": "Nudge all loose pencils down the desk.",
+  "action.help": "List discovered commands and show the script syntax.",
   "action.list": "List the names of things on the desk."
 };
 
@@ -102,6 +105,10 @@ export function setupConsole(simulation: Simulation) {
         example.textContent = word + " barrel_1";
       } else if (actionId === "action.tip") {
         example.textContent = word + " bottle_1 " + syntax("syntax.toward") + " " + syntax("direction.east");
+      } else if (actionId === "action.paint") {
+        example.textContent = word + " pencil_1 red";
+      } else if (actionId === "action.roll_east") {
+        example.textContent = word + " pencil_1";
       } else if (actionId === "action.upright" || actionId === "action.look") {
         example.textContent = word + " bottle_1";
       } else {
@@ -116,6 +123,10 @@ export function setupConsole(simulation: Simulation) {
       empty.textContent = "No words have been learned yet. Look around the desk and listen.";
       helpList.append(empty);
     }
+    const scripts = document.createElement("p");
+    scripts.className = "help-empty";
+    scripts.textContent = "Script syntax: command ; command · repeat 5 { ... } · if/when garden.moisture < 20% { ... } · let name = value · pencil_1 -> roll_east -> paint red";
+    helpList.append(scripts);
   }
 
   form.addEventListener("submit", (event) => {

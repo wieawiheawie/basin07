@@ -15,5 +15,10 @@
   "direction.north": "north",
   "direction.east": "east",
   "direction.south": "south",
-  "direction.west": "west"
+  "direction.west": "west",
+  "action.paint": "paint",
+  "action.set_colour": "set",
+  "action.roll_east": "roll_east",
+  "action.shift_down": "shift_down",
+  "syntax.colour": "colour"
 }

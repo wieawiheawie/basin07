@@ -129,7 +129,7 @@ pub fn parse_program(source: &str, glossary: &Glossary) -> Result<Vec<Statement>
     if tokens.is_empty() {
         return Err("Write a command or script first.".to_owned());
     }
-    let mut parser = ScriptParser { source, tokens, cursor: 0, glossary };
+    let mut parser = ScriptParser { source, tokens, cursor: 0 };
     let statements = parser.block(false)?;
     if !parser.at_end() {
         return Err("There is an unmatched closing brace in the script.".to_owned());
@@ -336,7 +336,6 @@ struct ScriptParser<'a> {
     source: &'a str,
     tokens: Vec<Token>,
     cursor: usize,
-    glossary: &'a Glossary,
 }
 
 impl ScriptParser<'_> {
