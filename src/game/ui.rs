@@ -3,11 +3,11 @@ use crate::sim::catalog::{PRODUCTS, ProductId};
 use bevy::prelude::*;
 
 #[derive(Component)]
-struct HudText;
+pub(crate) struct HudText;
 #[derive(Component)]
-struct OverlayText;
+pub(crate) struct OverlayText;
 #[derive(Component)]
-struct OverlayPanel;
+pub(crate) struct OverlayPanel;
 
 pub fn setup_hud(mut commands: Commands) {
     commands
