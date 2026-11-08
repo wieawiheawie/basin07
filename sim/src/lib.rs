@@ -785,8 +785,8 @@ mod tests {
     fn groove_channels_more_water_than_the_surrounding_surface() {
         let mut height = vec![0.0; GRID_CELLS];
         for x in 12..112 {
-            for dz in -2..=2 {
-                let index = (64 + dz) * GRID_SIZE + x;
+            for dz in -2_isize..=2 {
+                let index = (64_isize + dz) as usize * GRID_SIZE + x;
                 height[index] = -0.075 * (1.0 - (dz.abs() as f32 / 3.0).powi(2));
             }
         }

@@ -21,7 +21,7 @@ impl Glossary {
             .map(|(id, _)| id.as_str())
     }
 
-    pub fn word_for(&self, action_id: &str) -> &str {
+    pub fn word_for<'a>(&'a self, action_id: &'a str) -> &'a str {
         self.entries
             .iter()
             .find(|(id, _)| id == action_id)
