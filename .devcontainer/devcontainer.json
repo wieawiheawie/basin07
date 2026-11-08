@@ -9,7 +9,7 @@
       "targets": "wasm32-unknown-unknown"
     }
   },
-  "postCreateCommand": "cargo install trunk --locked",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "forwardPorts": [8080],
   "portsAttributes": {
     "8080": {

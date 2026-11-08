@@ -9,6 +9,12 @@ validate-core = "run --no-default-features --bin basin-validator -- --seeds 256"
 run-desktop = "run --no-default-features --features client,desktop --bin basin07"
 
 [target.wasm32-unknown-unknown]
-# Rust's wasm32-unknown-unknown target uses rust-lld (wasm-ld) by default.
+# Rust's wasm32-unknown-unknown target selects rust-lld (wasm-ld) by default.
 # Do not override it with the host linker. Avoid emitting unnecessary DWARF.
 rustflags = ["-C", "strip=debuginfo"]
+
+[target.x86_64-unknown-linux-gnu]
+# Faster native links for the optional desktop build in Codespaces.
+# setup.sh installs clang + lld before the native build is used.
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
