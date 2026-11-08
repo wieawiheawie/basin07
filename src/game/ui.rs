@@ -148,7 +148,7 @@ pub fn update_hud(
         output.clear();
         let _ = write!(
             output,
-            "CASH  ${:.0}\nSHIFT  {:05.1} min   SEED {}\n             LiCl SPOT  ${:.0}/t\n             CONTRACT  {} · {:.3}/{:.3} t · {:.0} min\n             GRID  {:.1}/310 kW   PRODUCTS  {:.3} t\n             GRAPHICS  {}\n",
+            "CASH  ${:.0}\nSHIFT  {:05.1} min   SEED {}\nLiCl SPOT  ${:.0}/t\nCONTRACT  {} · {:.3}/{:.3} t · {:.0} min\nGRID  {:.1}/310 kW   PRODUCTS  {:.3} t\nGRAPHICS  {}\n",
             session.plant.cash,
             session.plant.time_minutes,
             session.seed,
@@ -165,7 +165,7 @@ pub fn update_hud(
         if let (Some(id), Some(machine)) = (selected_id, selected) {
             let _ = write!(
                 output,
-                "\nSELECTED\n#{} {} · power {} · wear {:.0}%\n                 \nDIAGNOSTIC\n{}",
+                "\nSELECTED\n#{} {} · power {} · wear {:.0}%\n\nDIAGNOSTIC\n{}",
                 id,
                 machine.kind.name(),
                 if machine.powered { "ON" } else { "OFF" },
