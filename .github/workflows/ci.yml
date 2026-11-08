@@ -2,7 +2,7 @@ name: BASIN 07 CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "fix/**"]
   workflow_dispatch:
 
 permissions:
@@ -10,13 +10,15 @@ permissions:
 
 concurrency:
   group: basin07-ci-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-and-build:
     name: Content, Rust tests and WebAssembly build
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: 2
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -101,18 +103,73 @@ jobs:
       - name: Check WebAssembly client
         run: cargo check --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
 
-      - name: Build WebAssembly client with WebGL2
+      - name: Build WebAssembly client with WebGL2 (low-memory release profile)
         run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
+
+      - name: Report raw WebAssembly size before Trunk optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          wasm="target/wasm32-unknown-unknown/release/basin07.wasm"
+          test -f "$wasm"
+          raw_bytes="$(stat -c '%s' "$wasm")"
+          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
+          echo "Pre-Trunk WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
+          {
+            echo "### WASM size before Trunk wasm-opt"
+            echo "- Raw: $raw_bytes bytes"
+            echo "- Gzipped: $gzip_bytes bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Trunk
         run: cargo install trunk --locked
 
-      - name: Package browser build
+      - name: Package browser build (release profile)
         run: trunk build --release
+
+      - name: Report release WebAssembly size
+        shell: bash
+        run: |
+          set -euo pipefail
+          wasm="$(find dist -type f -name '*.wasm' -print -quit)"
+          test -n "$wasm"
+          raw_bytes="$(stat -c '%s' "$wasm")"
+          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
+          echo "Release WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
+          {
+            echo "### Browser WASM size — release profile"
+            echo "- Raw: $raw_bytes bytes"
+            echo "- Gzipped: $gzip_bytes bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload browser build
         uses: actions/upload-artifact@v4
         with:
-          name: basin07-web
+          name: basin07-web-release
           path: dist/
+          if-no-files-found: error
+
+      - name: Package final distribution build (thin LTO)
+        run: trunk --config Trunk.dist.toml build --release
+
+      - name: Report distribution WebAssembly size
+        shell: bash
+        run: |
+          set -euo pipefail
+          wasm="$(find dist-deploy -type f -name '*.wasm' -print -quit)"
+          test -n "$wasm"
+          raw_bytes="$(stat -c '%s' "$wasm")"
+          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
+          echo "Distribution WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
+          {
+            echo "### Browser WASM size — dist profile (thin LTO)"
+            echo "- Raw: $raw_bytes bytes"
+            echo "- Gzipped: $gzip_bytes bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload final distribution build
+        uses: actions/upload-artifact@v4
+        with:
+          name: basin07-dist
+          path: dist-deploy/
           if-no-files-found: error
