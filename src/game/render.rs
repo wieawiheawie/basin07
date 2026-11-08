@@ -138,7 +138,7 @@ pub fn sync_machines(
     mut existing: Query<(
         &MachineVisual,
         &mut Transform,
-        MeshMaterial3d<StandardMaterial>,
+        &MeshMaterial3d<StandardMaterial>,
     )>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
