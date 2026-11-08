@@ -1293,15 +1293,15 @@ impl Simulation {
             }
 
             let task = self.people[index].task;
-            if task == ResidentTask::WaterGarden {
-                if let Some(bottle) = self.objects.get(task_object) {
-                    let dx = 5.0 - bottle.x;
-                    let dz = 5.0 - bottle.z;
-                    let distance = (dx * dx + dz * dz).sqrt().max(0.001);
-                    let person = &mut self.people[index];
-                    person.target_x = bottle.x - dx / distance * 0.28;
-                    person.target_z = bottle.z - dz / distance * 0.28;
-                }
+            if task == ResidentTask::WaterGarden
+                && let Some(bottle) = self.objects.get(task_object)
+            {
+                let dx = 5.0 - bottle.x;
+                let dz = 5.0 - bottle.z;
+                let distance = (dx * dx + dz * dz).sqrt().max(0.001);
+                let person = &mut self.people[index];
+                person.target_x = bottle.x - dx / distance * 0.28;
+                person.target_z = bottle.z - dz / distance * 0.28;
             }
 
             let target_x = self.people[index].target_x;
