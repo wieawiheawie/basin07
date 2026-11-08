@@ -897,7 +897,9 @@ function createDeskScene(
     },
     render(time: number): void {
       timeUniform.value = time;
-      for (const flicker of barrelLights) {
+      for (let index = 0; index < barrelLights.length; index += 1) {
+        const flicker = barrelLights[index];
+        if (!flicker) continue;
         flicker.light.intensity = flicker.base
           + Math.sin(time * 7.4 + flicker.phase) * 0.07
           + Math.sin(time * 13.2 + flicker.phase * 1.4) * 0.025;
