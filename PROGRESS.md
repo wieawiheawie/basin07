@@ -24,7 +24,8 @@
 
 ### Verification
 
-- The current hosted run passed all 14 Rust tests, including lexer, parser, interpreter, internal water-volume conservation, edge spill and groove channeling.
-- Clippy stopped on one `new_without_default` lint for the simulation type. A `Default` implementation has now been added; the rerun is pending.
-- TypeScript typecheck has not yet completed successfully.
+- The last completed Rust test step passed all 14 tests, including lexer, parser, interpreter, internal water-volume conservation, edge spill and groove channeling.
+- Clippy found a `new_without_default` lint; the current commit adds `Default` and is being rechecked.
+- The Rust `wasmMemory` export is a module-level WASM function, matching the frontend import. A browser/WASM build is not part of the lightweight CI.
+- The Vitest autocomplete fixture has been corrected to match prefix-search behaviour; the current CI typecheck is pending.
 - Actual Codespace WebGL2 startup and visual quality still need a browser check after rebuilding the container.

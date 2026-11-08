@@ -3,7 +3,7 @@ import { getSuggestions, parseReply } from "./command";
 
 describe("prompt helpers", () => {
   it("suggests glossary words and object names", () => {
-    expect(getSuggestions("un", ["uncap", "upright", "bottle_1"])).toEqual(["uncap", "upright"]);
+    expect(getSuggestions("u", ["uncap", "upright", "bottle_1"])).toEqual(["uncap", "upright"]);
   });
 
   it("does not suggest after a completed word", () => {
