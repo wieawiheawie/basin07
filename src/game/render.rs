@@ -200,7 +200,6 @@ pub fn setup_scene(
 
     commands.spawn((
         Camera3d::default(),
-        Tonemapping::None,
         Transform::from_xyz(20.0, 22.0, 22.0).looking_at(Vec3::ZERO, Vec3::Y),
         MainCamera,
     ));
@@ -211,7 +210,7 @@ pub fn setup_scene(
             } else {
                 10_000.0
             },
-            shadows_enabled: graphics.mode == GraphicsMode::Standard,
+            shadow_maps_enabled: graphics.mode == GraphicsMode::Standard,
             ..default()
         },
         Transform::from_xyz(-10.0, 18.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -225,7 +224,7 @@ pub fn setup_scene(
                 12_000.0
             },
             range: 45.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_xyz(2.0, 14.0, 3.0),
@@ -327,7 +326,7 @@ pub fn sync_scene_materials(
     let low = mode == GraphicsMode::Low;
     for mut light in &mut directional_lights {
         light.illuminance = if low { 0.0 } else { 10_000.0 };
-        light.shadows_enabled = !low;
+        light.shadow_maps_enabled = !low;
     }
     for mut light in &mut point_lights {
         light.intensity = if low { 0.0 } else { 12_000.0 };
