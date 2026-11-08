@@ -50,8 +50,18 @@ pub fn handle_input(
         }
     }
     if keyboard.just_pressed(KeyCode::KeyR) {
-        session.seed = session.seed.wrapping_add(1).max(1);
-        *session = GameSession::new(session.seed);
+        if let Some(id) = session.selected_machine {
+            session.status_message = match session.plant.rotate_machine(id) {
+                Ok(()) => format!("Rotated machine #{id} by 90°."),
+                Err(error) => error,
+            };
+        } else {
+            session.status_message = "Select a machine before rotating it.".into();
+        }
+    }
+    if keyboard.just_pressed(KeyCode::Backspace) {
+        let next_seed = session.seed.wrapping_add(1).max(1);
+        *session = GameSession::new(next_seed);
         simulation_clock.accumulator_seconds = 0.0;
         return;
     }

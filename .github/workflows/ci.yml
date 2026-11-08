@@ -2,28 +2,26 @@ name: BASIN 07 CI
 
 on:
   push:
-    branches: [main, "fix/**"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: basin07-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-and-build:
-    name: Content, Rust tests and WebAssembly build
+  validate-and-check:
+    name: Content, Rust tests and WASM check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 25
     env:
       CARGO_BUILD_JOBS: 2
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,65 +32,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
+          components: rustfmt
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Expand initial source upload (first run only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f .bootstrap/chunk-00.txt ]]; then
-            cp .github/workflows/ci.yml /tmp/basin07-ci.yml
-            cp PROGRESS.md /tmp/basin07-progress.md
-            cat .bootstrap/chunk-*.txt | tr -d '\r\n' | base64 --decode > /tmp/basin07-source.tar.xz
-            echo "3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771  /tmp/basin07-source.tar.xz" | sha256sum --check
-            tar -xJf /tmp/basin07-source.tar.xz --no-same-owner
-            rm -rf .bootstrap
-            mkdir -p .github/workflows
-            cp /tmp/basin07-ci.yml .github/workflows/ci.yml
-            cp /tmp/basin07-progress.md PROGRESS.md
-            printf '\n## REMOTE SOURCE IMPORT\n\n- The original source/data/docs archive was expanded by GitHub Actions and SHA-256 verified.\n- All ordinary project files are now present; temporary transport chunks were removed.\n- Cargo build/test results are recorded in this tracker and the workflow run.\n' >> PROGRESS.md
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: expand BASIN 07 source, data and documentation [skip ci]"
-              git push origin HEAD:${GITHUB_REF_NAME}
-            fi
-          fi
-
-      - name: Generate and commit Cargo.lock when absent
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f Cargo.lock ]]; then
-            cargo generate-lockfile
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.lock
-            git commit -m "build: lock Rust dependency versions [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          fi
-
       - name: Validate content and economy
         run: python scripts/validate_content.py --stage all --seeds 256
 
-      - name: Format Rust source and commit formatting repairs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt --all
-          if ! git diff --quiet -- '*.rs'; then
-            printf '\n## RUST FORMAT REPAIR\n\n- Applied rustfmt to all tracked Rust source and tests.\n- Formatting-only changes were committed by the build runner before compile/test steps.\n' >> PROGRESS.md
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "style: apply rustfmt formatting [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          fi
-          cargo fmt --all -- --check
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
 
       - name: Run Rust simulation tests
         run: cargo test --no-default-features --lib
@@ -102,74 +51,3 @@ jobs:
 
       - name: Check WebAssembly client
         run: cargo check --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
-
-      - name: Build WebAssembly client with WebGL2 (low-memory release profile)
-        run: cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
-
-      - name: Report raw WebAssembly size before Trunk optimization
-        shell: bash
-        run: |
-          set -euo pipefail
-          wasm="target/wasm32-unknown-unknown/release/basin07.wasm"
-          test -f "$wasm"
-          raw_bytes="$(stat -c '%s' "$wasm")"
-          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
-          echo "Pre-Trunk WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
-          {
-            echo "### WASM size before Trunk wasm-opt"
-            echo "- Raw: $raw_bytes bytes"
-            echo "- Gzipped: $gzip_bytes bytes"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Install Trunk
-        run: cargo install trunk --locked
-
-      - name: Package browser build (release profile)
-        run: trunk build --release
-
-      - name: Report release WebAssembly size
-        shell: bash
-        run: |
-          set -euo pipefail
-          wasm="$(find dist -type f -name '*.wasm' -print -quit)"
-          test -n "$wasm"
-          raw_bytes="$(stat -c '%s' "$wasm")"
-          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
-          echo "Release WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
-          {
-            echo "### Browser WASM size — release profile"
-            echo "- Raw: $raw_bytes bytes"
-            echo "- Gzipped: $gzip_bytes bytes"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload browser build
-        uses: actions/upload-artifact@v4
-        with:
-          name: basin07-web-release
-          path: dist/
-          if-no-files-found: error
-
-      - name: Package final distribution build (thin LTO)
-        run: trunk --config Trunk.dist.toml build --release
-
-      - name: Report distribution WebAssembly size
-        shell: bash
-        run: |
-          set -euo pipefail
-          wasm="$(find dist-deploy -type f -name '*.wasm' -print -quit)"
-          test -n "$wasm"
-          raw_bytes="$(stat -c '%s' "$wasm")"
-          gzip_bytes="$(gzip -n -c "$wasm" | wc -c | tr -d ' ')"
-          echo "Distribution WASM: $raw_bytes bytes raw; $gzip_bytes bytes gzip"
-          {
-            echo "### Browser WASM size — dist profile (thin LTO)"
-            echo "- Raw: $raw_bytes bytes"
-            echo "- Gzipped: $gzip_bytes bytes"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload final distribution build
-        uses: actions/upload-artifact@v4
-        with:
-          name: basin07-dist
-          path: dist-deploy/
-          if-no-files-found: error

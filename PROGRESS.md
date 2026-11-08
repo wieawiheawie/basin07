@@ -2,54 +2,44 @@
 
 > Read this file and inspect the latest git log before continuing. Do not repeat completed work.
 
-## Current status — 2026-11-07
+## Current status — 2026-11-08
 
 - Repository: https://github.com/wieawiheawie/basin07, branch `main`.
-- Normal source tree, data, docs, Python validator, Cargo manifest and lockfile are present on `main`. The temporary nine-chunk transport archive was SHA-256 verified and removed by GitHub Actions.
-- This session cannot open the user's authenticated Codespace terminal. GitHub Actions is being used as the remote build environment.
-- Latest verified code commit before this documentation update: `db4b2def706fee4f9021372d138e11eb6facb8cd` (seeded economy and powered adsorption test repairs).
-- Latest relevant CI run: [42370602681](https://github.com/wieawiheawie/basin07/actions/runs/42370602681), testing commit `db4b2def706fee4f9021372d138e11eb6facb8cd`.
-- **PASS:** archive extraction and checksum, Cargo.lock generation, Python content/economy validator, rustfmt, `cargo test --no-default-features --lib`, and `cargo run --no-default-features --bin basin-validator -- --seeds 256`.
-- The Rust unit suite has 19 tests; all tests passed in this run.
-- **IN PROGRESS at last check:** `cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07`.
-- Trunk install, `trunk build --release`, browser artifact upload, warning review and runtime/browser smoke test have not yet been confirmed. Do not call BASIN 07 playable yet.
-- The CI run's current step is the WebAssembly compile. Logs are only available after the job finishes, so warnings from that step cannot yet be reviewed.
+- Existing simulation core, data files and 19-test Rust suite are retained.
+- Milestone 1 scene is implemented: low-poly ground, 18×14 shared-mesh construction grid, 3D camera, five service markers, machine selection and click-to-place.
+- `R` rotates the selected machine in 90° steps. The stored simulation rotation is now applied to the rendered machine. Backspace restarts the site.
+- Release profile is the requested memory-light configuration: `opt-level = "s"`, `lto = false`, `codegen-units = 16`, `panic = "abort"`, `strip = true`, `debug = false`. `profile.dist` inherits release and uses thin LTO.
+- Bevy 0.20.1 remains the renderer. It passed WASM check/build and Trunk packaging in GitHub Actions; no renderer rewrite is justified yet.
+- **Last verified parent commit:** `fe1cdfa818560770bbd1d3afb7344e9fd00a10fc`; GitHub Actions run [#48](https://github.com/wieawiheawie/basin07/actions/runs/42438783108) succeeded.
+- **Run #48 passed:** Python content/economy validator; Rust formatting; all 19 Rust unit tests; Rust headless validator; WASM `cargo check`; WASM release build; `trunk build --release`; and separate thin-LTO distribution packaging.
+- **WASM sizes from run #48:** pre-Trunk 90,295,893 bytes raw / 14,475,783 bytes gzip; regular release 30,131,532 / 9,006,989; dist build 30,446,751 / 9,015,782.
+- These are hosted-runner results, **not** proof of the user's 7.8 GB/no-swap Codespace limit. That environment and the actual browser runtime still need a smoke test.
+- CI is now scoped to content validation, formatting, Rust tests, headless validator and WASM `cargo check`; it no longer runs the long release build or Trunk packaging.
+- **Milestone 1 status:** scene/placement source and an earlier Trunk release artifact are verified. Final confirmation is pending `trunk serve --release` in the user's Codespace.
 
-## Exact commands
+## Exact Codespace commands
 
-Run from the repository root after Codespaces post-create setup:
+Run from the repository root:
 
-1. `bash .devcontainer/bootstrap.sh` — only if initial source extraction/toolchain setup did not run.
-2. `python3 scripts/validate_content.py --stage all --seeds 256`
-3. `cargo fmt --all -- --check`
-4. `cargo test --no-default-features --lib`
-5. `cargo run --no-default-features --bin basin-validator -- --seeds 256`
-6. `cargo build --release --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07`
-7. `cargo install trunk --locked`
-8. `trunk build --release`
-9. `trunk serve --open` — browser/runtime smoke test on port 8080.
+```bash
+git pull --ff-only origin main
+trunk serve --release
+```
 
-The CI workflow runs steps 2–8 (Trunk is installed in the runner before packaging). It also uploads the `dist/` output as the `basin07-web` artifact on success.
+Open the forwarded port **8080**. Test: press **Space** to open the lease, press **1** to select the Well Pump, then left-click an empty grid tile. Select the placed machine and press **R** to rotate it. **WASD** moves the camera target, **Q/E** orbits, and **+/-** zooms.
 
-## Completed
+Paste the complete `trunk serve --release` terminal output, plus whether the 3D plot appeared and whether the Well Pump could be placed and rotated. Do not mark Milestone 1 fully browser-verified until this is confirmed.
 
-- [x] BASIN 07 source, assets/data, documentation and validator committed to this repository.
-- [x] Temporary archive expanded; SHA-256 verified against `3d1365524c77962c5730191d244542753745e314c618b3146f2843ae6410d771`.
-- [x] `.github/workflows/ci.yml` added. Pushes to `main` run validation, formatting, unit tests, Rust headless validator, WASM build and Trunk packaging.
-- [x] `.devcontainer/devcontainer.json` and `.devcontainer/bootstrap.sh` added. New Codespaces install stable Rust, rustfmt, clippy, `wasm32-unknown-unknown`, and Trunk.
-- [x] Rust formatting repaired and committed by CI as `9d1f75bcda61901f91d05897e18319b341bb4723`.
-- [x] Leak probability numeric mismatch repaired in `src/sim/plant.rs` by promoting the stress sum from f32 to f64 (commit `db05fe3dc062545d1a642ed0d3614b1e10548b5c`).
-- [x] Economy trial diversity/contract threshold corrected and adsorption unit tests updated to use powered controller links and normal fixed-tick processing (commit `db4b2def706fee4f9021372d138e11eb6facb8cd`).
-- [x] Latest CI run reports all 19 Rust unit tests PASS.
-- [x] Latest CI run reports Rust headless validator PASS.
-- [x] Python content validator PASS: 10 marketable products, 2 connected sectors, 5 atom-balanced reactions, and 512 seeded controller-path runs (256 seeds per control path).
+## Milestone tracker
 
-## Remaining work
-
-1. Wait for the current WebAssembly build step to report success/failure; inspect the job logs for compiler errors and warnings.
-2. If WASM fails, repair the cause in a separate source/CI commit and update this tracker in the same commit. Keep memory bounded for the 8 GiB target.
-3. After WASM passes, verify Trunk install and `trunk build --release`; fix errors/warnings and commit each repair.
-4. Confirm a successful `basin07-web` artifact, then run `trunk serve --open` in Codespaces and smoke-test the actual browser runtime. The assistant cannot use the authenticated Codespace terminal directly, so this last smoke test requires the user's Codespace session unless a suitable remote runner is added.
+- [x] Milestone 1 source: ground plane, 3D camera, construction grid, service markers, placeable machine and selection.
+- [x] Milestone 1 Trunk release artifact: packaging passed on GitHub Actions run #48.
+- [ ] Milestone 1 Codespace/browser smoke test: awaiting the user's `trunk serve --release` output and interaction confirmation.
+- [ ] Milestone 2: grid placement and typed physical networks with visible flow.
+- [ ] Milestone 3: starter lithium chain, shipping and money loop.
+- [ ] Milestone 4: preset controller and sandboxed Rhai editor wired to sensors/actuators.
+- [ ] Milestone 5: market, pollution, wear and visible failure explanations.
+- [ ] Milestone 6: visual polish and data-driven content expansion.
 
 ## Known modelling limitations (not build blockers)
 

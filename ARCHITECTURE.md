@@ -1,7 +1,7 @@
 # ARCHITECTURE — BASIN 07
 
 **Architecture revision:** Phase 2, 7 November 2026  
-**Status:** research and target architecture documented; runtime content migration is not yet complete.
+**Status:** renderer/build path verified on GitHub Actions; Codespace runtime smoke test pending; runtime content migration is not yet complete.
 
 ## 1. Decision summary
 
@@ -26,7 +26,7 @@ The current code does **not yet** meet the final data-driven target: `catalog.rs
 | WebGPU-only | Modern API and feature set; good long-term path for large plants and more demanding visuals. | Browser/device coverage is not universal. Bevy documents WebGPU browser examples as desktop Chrome-only in its current support note. | Optional, separate build only. |
 | WebGL2 | Broadly available desktop browser fallback and sufficient for the first low-poly factory scene. | Lower feature/performance ceiling than WebGPU; no general compute-shader path for this simulation design. | **Default build.** Keep simulation on the CPU and use instancing for repeated geometry. |
 
-Bevy 0.20 was released on 8 October 2026; Bevy 0.20.1 is the package version pinned in `Cargo.toml`. The 0.20.1 package declares Rust 1.97.1 as its minimum supported version, now mirrored in this project's `rust-version`. Bevy's `webgpu` and `webgl2` Cargo features select different WASM backends: enabling WebGPU overrides the WebGL2 path. They are therefore two build artifacts, not a runtime backend switch inside one WASM binary. The official Bevy WebGPU examples currently show a browser support warning, so the compatibility-first WebGL2 build remains the primary deployment.
+Bevy 0.20 was released on 8 October 2026; Bevy 0.20.1 is the package version pinned in `Cargo.toml`. The 0.20.1 package declares Rust 1.97.1 as its minimum supported version, now mirrored in this project's `rust-version`. Bevy's `webgpu` and `webgl2` Cargo features select different WASM backends: enabling WebGPU overrides the WebGL2 path. They are therefore two build artifacts, not a runtime backend switch inside one WASM binary. The compatibility-first WebGL2 build remains the primary deployment.\n\n**Build evidence and renderer decision (8 November 2026):** GitHub Actions run [#48](https://github.com/wieawiheawie/basin07/actions/runs/42438783108) passed the WASM check/build, `trunk build --release` and separate thin-LTO distribution build. The regular release WASM measured 30,131,532 bytes raw / 9,006,989 bytes gzip. This is not tiny, but the build completed and the scene uses shared meshes/materials with a low-graphics preset. Keep Bevy for the first playable slice; revisit only if the 7.8 GB Codespace build is OOM-killed or browser profiling shows unacceptable runtime overhead. The hosted-runner result does not prove the user's Codespace memory limit.
 
 ## 3. Build profiles and commands
 
@@ -63,7 +63,7 @@ cargo test --no-default-features --lib
 cargo run --no-default-features --bin basin-validator -- --seeds 256
 ```
 
-The current environment used for this phase has no `rustc`, `cargo`, `trunk` or `rustup`, and apt package-index access timed out. None of the above Rust commands has been successfully executed in this environment. Do not report the existing Rust source as compiled or the game as browser-playtested until a build runner has done so.
+GitHub Actions run #48 verified the 19 Rust tests, Python content/economy validator, Rust headless validator, WASM `cargo check`, WASM release compile, Trunk release packaging and thin-LTO distribution packaging. The user's Codespace is a separate 7.8 GB/no-swap environment; run `trunk serve --release` there before claiming the target memory ceiling or browser runtime is confirmed.
 
 ## 4. Rhai controller integration and sandbox
 
@@ -199,7 +199,7 @@ The in-game codex is generated from the same loaded registries. Each entry displ
 
 ### 7.1 Fixed timestep
 
-The present prototype advances the process core in fixed 0.25-game-minute steps (four simulation ticks per real second at the current time scale) while Bevy renders independently. Keep this split. Accumulate elapsed time, cap catch-up steps after tab stalls, and slow the simulation rather than entering a long catch-up loop.
+The current client advances the process core in fixed 0.5-game-minute steps at two simulation ticks per real second while Bevy renders independently. Keep this split. Accumulate elapsed time, cap catch-up steps after tab stalls, and drop excess backlog rather than entering a long catch-up loop.
 
 Substep order:
 
@@ -231,7 +231,7 @@ Substep order:
 - Cap dynamic lights and real-time shadows. Use emissive alarm indicators and decal/particle pools for readable leaks, gas releases and process activity.
 - Update HUD text at a low fixed cadence or on state changes, not every render frame.
 
-The current Bevy renderer and simulation still allocate temporary vectors/maps in frame/tick systems and create per-machine materials. These are known prototype costs. Profile before claiming a large-factory frame-rate target; replace hot-path allocations and unique materials before scaling to hundreds of machines.
+The renderer uses shared mesh handles and a small shared material palette rather than creating one material per machine. Some simulation/network paths still allocate temporary vectors/maps; profile and remove hot-path allocations before claiming a large-factory frame-rate target or scaling to hundreds of machines.
 
 ## 8. Content validation and economy reports
 

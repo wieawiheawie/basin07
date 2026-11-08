@@ -72,7 +72,7 @@ pub fn setup_hud(mut commands: Commands) {
             ));
             parent.spawn((
                 Text::new(
-                    "1-0 place machines · F1 PLC · F2 code\n                     Click tile to build / select\n                     F3 cycles pipe · Shift-click source → target\n                     G grid · Y wellhead · U supplier\n                     J reinjection · M dispatch · Enter sell\n                     F10 Low/Standard graphics · F11 reagent · F12 order\n                     F7 compile Rhai · F5 save · F9 load\n                     WASD / arrows move · Q/E rotate · +/- zoom\n                     SPACE run/pause · ESC pause · R restart",
+                    "1-0 place machines · F1 PLC · F2 code\n                     Click tile to build / select\n                     F3 cycles pipe · Shift-click source → target\n                     G grid · Y wellhead · U supplier\n                     J reinjection · M dispatch · Enter sell\n                     F10 Low/Standard graphics · F11 reagent · F12 order\n                     F7 compile Rhai · F5 save · F9 load\n                     WASD / arrows move · Q/E orbit · +/- zoom\n                     R rotate selected · Backspace restart\n                     SPACE run/pause · ESC pause",
                 ),
                 TextFont {
                     font_size: FontSize::Px(12.0),
@@ -165,9 +165,10 @@ pub fn update_hud(
         if let (Some(id), Some(machine)) = (selected_id, selected) {
             let _ = write!(
                 output,
-                "\nSELECTED\n#{} {} · power {} · wear {:.0}%\n\nDIAGNOSTIC\n{}",
+                "\nSELECTED\n#{} {} · rot {}° · power {} · wear {:.0}%\n\nDIAGNOSTIC\n{}",
                 id,
                 machine.kind.name(),
+                machine.rotation * 90,
                 if machine.powered { "ON" } else { "OFF" },
                 machine.wear * 100.0,
                 machine

@@ -381,13 +381,20 @@ pub fn sync_machines(
             0.65,
             tile_z(machine.pos.z as i32),
         );
+        let rotation = Quat::from_rotation_y(
+            f32::from(machine.rotation) * std::f32::consts::FRAC_PI_2,
+        );
 
         let Some(entity) = registry.machine_entities.get(&machine.id).copied() else {
             let entity = commands
                 .spawn((
                     Mesh3d(assets.machine_meshes[machine_mesh_index(machine.kind)].clone()),
                     MeshMaterial3d(material),
-                    Transform::from_translation(position),
+                    Transform {
+                        translation: position,
+                        rotation,
+                        ..default()
+                    },
                     MachineVisual(machine.id),
                 ))
                 .id();
@@ -399,6 +406,9 @@ pub fn sync_machines(
             let _machine_id = visual.0;
             if transform.translation != position {
                 transform.translation = position;
+            }
+            if transform.rotation != rotation {
+                transform.rotation = rotation;
             }
             if current_material.0 != material {
                 current_material.0 = material;
