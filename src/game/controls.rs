@@ -1,4 +1,7 @@
-use super::{CameraRig, GameMode, GameSession, GraphicsMode, GraphicsSettings, SimulationClock, kind_from_digit};
+use super::{
+    CameraRig, GameMode, GameSession, GraphicsMode, GraphicsSettings, SimulationClock,
+    kind_from_digit,
+};
 use crate::sim::catalog::{Endpoint, LineKind, MachineKind, ReagentId, ServicePort};
 use crate::sim::network::GridPos;
 use bevy::prelude::*;

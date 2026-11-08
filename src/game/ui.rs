@@ -170,7 +170,10 @@ pub fn update_hud(
                 machine.kind.name(),
                 if machine.powered { "ON" } else { "OFF" },
                 machine.wear * 100.0,
-                machine.alarm.as_deref().unwrap_or("No active alarm on selected machine"),
+                machine
+                    .alarm
+                    .as_deref()
+                    .unwrap_or("No active alarm on selected machine"),
             );
         } else {
             output.push_str("\nSELECTED\nNo machine selected\n\nDIAGNOSTIC\nNo active alarm");

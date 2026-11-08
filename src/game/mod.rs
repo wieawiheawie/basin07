@@ -155,10 +155,7 @@ fn advance_simulation(
         clock.accumulator_seconds = clock.accumulator_seconds.min(SIM_TICK_SECONDS);
     }
 
-    if ticks > 0
-        && session.plant.cash <= 0.0
-        && session.plant.total_products_t() <= 0.0001
-    {
+    if ticks > 0 && session.plant.cash <= 0.0 && session.plant.total_products_t() <= 0.0001 {
         session.mode = GameMode::Report;
         session.plant.paused = true;
         session.status_message = "The site is insolvent. Review the plant, then restart.".into();

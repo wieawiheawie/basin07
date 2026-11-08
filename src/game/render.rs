@@ -109,18 +109,8 @@ pub fn setup_scene(
     let ground_mesh = meshes.add(Cuboid::new(29.0, 0.18, 23.0));
     let service_mesh = meshes.add(Cuboid::new(0.85, 0.55, 0.85));
 
-    let ground_material = material_pair(
-        &mut materials,
-        Color::srgb(0.075, 0.115, 0.12),
-        0.0,
-        1.0,
-    );
-    let tile_material = material_pair(
-        &mut materials,
-        Color::srgb(0.14, 0.19, 0.18),
-        0.0,
-        1.0,
-    );
+    let ground_material = material_pair(&mut materials, Color::srgb(0.075, 0.115, 0.12), 0.0, 1.0);
+    let tile_material = material_pair(&mut materials, Color::srgb(0.14, 0.19, 0.18), 0.0, 1.0);
 
     // Five shared status materials cover every machine; instances never allocate their own.
     let machine_materials = [
@@ -154,12 +144,7 @@ pub fn setup_scene(
             )
         })
         .collect();
-    let leak_material = material_pair(
-        &mut materials,
-        Color::srgb(0.96, 0.12, 0.06),
-        0.0,
-        0.9,
-    );
+    let leak_material = material_pair(&mut materials, Color::srgb(0.96, 0.12, 0.06), 0.0, 0.9);
 
     let assets = SceneAssets {
         machine_meshes,
@@ -286,7 +271,13 @@ fn machine_mesh_index(kind: MachineKind) -> usize {
     }
 }
 
-fn machine_material_index(session: &GameSession, id: u32, active: bool, powered: bool, alarm: bool) -> usize {
+fn machine_material_index(
+    session: &GameSession,
+    id: u32,
+    active: bool,
+    powered: bool,
+    alarm: bool,
+) -> usize {
     if session.selected_machine == Some(id) {
         0
     } else if alarm {
@@ -360,13 +351,22 @@ pub fn sync_machines(
     }
 
     for (&id, &entity) in &registry.machine_entities {
-        if !session.plant.machines.iter().any(|machine| machine.id == id) {
+        if !session
+            .plant
+            .machines
+            .iter()
+            .any(|machine| machine.id == id)
+        {
             commands.entity(entity).despawn();
         }
     }
-    registry
-        .machine_entities
-        .retain(|id, _| session.plant.machines.iter().any(|machine| machine.id == *id));
+    registry.machine_entities.retain(|id, _| {
+        session
+            .plant
+            .machines
+            .iter()
+            .any(|machine| machine.id == *id)
+    });
 
     for machine in &session.plant.machines {
         let material_index = machine_material_index(
