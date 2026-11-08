@@ -645,22 +645,57 @@ function createDeskScene(
         const cachedSource = modelCache.get(modelId);
         if (!cachedSource) throw new Error("Model cache insert failed.");
         loaded += 1;
-        for (const target of modelTargets.get(modelId) ?? []) {
-          const instance = cachedSource.clone(true);
-          instance.scale.setScalar(PACK_SCALE);
-          instance.position.y += floorOffset * PACK_SCALE;
-          instance.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
-              child.receiveShadow = true;
+        const targets = modelTargets.get(modelId) ?? [];
+        if (targets.length >= 3) {
+          const sourceInverse = source.matrixWorld.clone().invert();
+          const modelBasis = new THREE.Matrix4()
+            .makeTranslation(0, floorOffset * PACK_SCALE, 0)
+            .multiply(new THREE.Matrix4().makeScale(PACK_SCALE, PACK_SCALE, PACK_SCALE));
+          const matrix = new THREE.Matrix4();
+          source.traverse((part) => {
+            if (!(part instanceof THREE.Mesh)) return;
+            const relative = new THREE.Matrix4().multiplyMatrices(sourceInverse, part.matrixWorld);
+            const instances = new THREE.InstancedMesh(part.geometry, part.material, targets.length);
+            instances.name = modelId + "_instances_" + part.name;
+            instances.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+            instances.receiveShadow = true;
+            for (let instanceIndex = 0; instanceIndex < targets.length; instanceIndex += 1) {
+              const target = targets[instanceIndex];
+              if (!target) continue;
+              target.updateMatrixWorld(true);
+              matrix.multiplyMatrices(target.matrixWorld, modelBasis).multiply(relative);
+              instances.setMatrixAt(instanceIndex, matrix);
             }
+            instances.instanceMatrix.needsUpdate = true;
+            instances.computeBoundingSphere();
+            scene.add(instances);
           });
-          for (const child of target.children.slice()) {
-            if (child.userData.proceduralFallback === true) target.remove(child);
+          const hitMaterial = new THREE.MeshBasicMaterial({
+            transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide
+          });
+          for (const target of targets) {
+            for (const child of target.children.slice()) {
+              if (child.userData.proceduralFallback === true) target.remove(child);
+            }
+            const hitProxy = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.28, 8), hitMaterial);
+            hitProxy.position.y = 0.14;
+            target.add(hitProxy);
           }
-          target.add(instance);
-          if (modelId === "lantern") {
-            // The lightweight point light is attached to the object root and remains separate from the GLB.
+        } else {
+          for (const target of targets) {
+            const instance = cachedSource.clone(true);
+            instance.scale.setScalar(PACK_SCALE);
+            instance.position.y += floorOffset * PACK_SCALE;
+            instance.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+                child.receiveShadow = true;
+              }
+            });
+            for (const child of target.children.slice()) {
+              if (child.userData.proceduralFallback === true) target.remove(child);
+            }
+            target.add(instance);
           }
         }
       } catch (error) {
