@@ -5,21 +5,25 @@ mod water;
 use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 
-use parser::{Command, Direction, Glossary, PositionExpr};
+use parser::{Command, Condition, Direction, Glossary, PipeStep, PositionExpr, Statement};
 use water::{CELL_SIZE, DESK_SIZE, FlowBuffers, GRID_CELLS, GRID_SIZE};
 
 const FIXED_STEP: f32 = 1.0 / 60.0;
 const INITIAL_BOTTLE_VOLUME: f32 = 0.14;
 const INITIAL_BARREL_VOLUME: f32 = 0.75;
-const ACTION_IDS: [&str; 8] = [
+const ACTION_IDS: [&str; 12] = [
     "action.carve",
     "action.uncap",
     "action.tap",
     "action.tip",
     "action.upright",
     "action.look",
+    "action.paint",
+    "action.roll_east",
+    "action.shift_down",
     "action.help",
     "action.list",
+    "action.set_colour",
 ];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -68,6 +72,31 @@ struct Person {
     seated: bool,
 }
 
+#[derive(Clone, Copy)]
+struct RigidBody {
+    vx: f32,
+    vz: f32,
+    mass: f32,
+    friction: f32,
+    restitution: f32,
+}
+
+impl RigidBody {
+    fn for_object(kind: ObjectKind) -> Self {
+        if kind == ObjectKind::Pencil {
+            Self { vx: 0.0, vz: 0.0, mass: 0.008, friction: 0.72, restitution: 0.48 }
+        } else {
+            Self { vx: 0.0, vz: 0.0, mass: f32::INFINITY, friction: 1.0, restitution: 0.0 }
+        }
+    }
+}
+
+struct WhenListener {
+    condition: Condition,
+    commands: Vec<Command>,
+    was_true: bool,
+}
+
 #[wasm_bindgen]
 pub struct Simulation {
     height: Vec<f32>,
@@ -78,11 +107,16 @@ pub struct Simulation {
     water_positions: Vec<f32>,
     water_normals: Vec<f32>,
     objects: Vec<WorldObject>,
+    colours: Vec<u8>,
+    bodies: Vec<RigidBody>,
     people: Vec<Person>,
     people_buffer: Vec<f32>,
     glossary: Glossary,
     discovered: Vec<String>,
     queue: VecDeque<String>,
+    action_queue: VecDeque<Command>,
+    aliases: Vec<(String, String)>,
+    listeners: Vec<WhenListener>,
     accumulator: f32,
     elapsed: f32,
     energy: f32,
@@ -161,6 +195,9 @@ impl Simulation {
             Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59, target_x: 8.9, target_z: 8.45, seat_target: false, at_tavern: false, seated: false },
         ];
 
+        let colours = vec![0; objects.len()];
+        let bodies = objects.iter().map(|object| RigidBody::for_object(object.kind)).collect();
+
         let mut simulation = Simulation {
             height: vec![0.0; GRID_CELLS],
             water: vec![0.0; GRID_CELLS],
@@ -171,10 +208,15 @@ impl Simulation {
             water_normals: vec![0.0; GRID_CELLS * 3],
             people_buffer: vec![0.0; people.len() * 5],
             objects,
+            colours,
+            bodies,
             people,
             glossary: Glossary::default(),
             discovered: vec!["action.list".to_owned(), "action.look".to_owned()],
             queue: VecDeque::with_capacity(12),
+            action_queue: VecDeque::with_capacity(32),
+            aliases: Vec::with_capacity(8),
+            listeners: Vec::with_capacity(4),
             accumulator: 0.0,
             elapsed: 0.0,
             energy: 100.0,
@@ -206,7 +248,7 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = enqueueCommand)]
     pub fn enqueue_command(&mut self, source: &str) -> bool {
-        if self.queue.len() >= 12 || source.trim().is_empty() {
+        if self.queue.len() + self.action_queue.len() >= 12 || source.trim().is_empty() {
             return false;
         }
         self.queue.push_back(source.to_owned());
@@ -233,7 +275,7 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = queueLength)]
     pub fn queue_length(&self) -> usize {
-        self.queue.len()
+        self.queue.len() + self.action_queue.len()
     }
 
     #[wasm_bindgen(js_name = resultSequence)]
@@ -357,6 +399,21 @@ impl Simulation {
         self.objects.get(index).map(|object| object.volume).unwrap_or(0.0)
     }
 
+    #[wasm_bindgen(js_name = objectColour)]
+    pub fn object_colour(&self, index: usize) -> u8 {
+        self.colours.get(index).copied().unwrap_or(0)
+    }
+
+    #[wasm_bindgen(js_name = objectVelocityX)]
+    pub fn object_velocity_x(&self, index: usize) -> f32 {
+        self.bodies.get(index).map(|body| body.vx).unwrap_or(0.0)
+    }
+
+    #[wasm_bindgen(js_name = objectVelocityZ)]
+    pub fn object_velocity_z(&self, index: usize) -> f32 {
+        self.bodies.get(index).map(|body| body.vz).unwrap_or(0.0)
+    }
+
     #[wasm_bindgen(js_name = waterVolume)]
     pub fn water_volume(&self) -> f32 {
         water::total_volume(&self.water)
@@ -407,6 +464,8 @@ impl Simulation {
         }
 
         self.flow.step(&self.height, &mut self.water, dt, true, 0.00016);
+        self.update_rigid_bodies(dt);
+        self.update_listeners();
         self.update_people(dt);
         self.process_queue();
         self.refresh_mesh_buffers();
@@ -414,19 +473,52 @@ impl Simulation {
     }
 
     fn process_queue(&mut self) {
-        if self.cooldown > 0.0 || self.queue.is_empty() || self.energy < 12.0 {
+        if self.cooldown > 0.0 {
             return;
         }
 
-        let source = self.queue.pop_front().unwrap_or_default();
-        self.energy -= 12.0;
-        self.cooldown = 0.72;
+        if let Some(command) = self.action_queue.pop_front() {
+            let result = self.execute(command);
+            self.publish_result(result);
+            self.cooldown = 0.72;
+            self.refresh_mesh_buffers();
+            return;
+        }
 
-        let parsed = parser::parse(&source, &self.glossary);
-        let result = match parsed {
-            Ok(command) => self.execute(command),
-            Err(error) => Err(error),
+        let Some(source) = self.queue.pop_front() else {
+            return;
         };
+        let program = match parser::parse_program(&source, &self.glossary) {
+            Ok(program) => program,
+            Err(error) => {
+                self.publish_result(Err(error));
+                return;
+            }
+        };
+        let mut commands = Vec::new();
+        if let Err(error) = self.compile_statements(&program, &mut commands) {
+            self.publish_result(Err(error));
+            return;
+        }
+
+        let cost: f32 = commands.iter().map(command_energy_cost).sum();
+        if cost > self.energy {
+            self.publish_result(Err(format!(
+                "This script needs {:.0} energy, but only {:.0} is available. Nothing was queued.",
+                cost, self.energy
+            )));
+            return;
+        }
+
+        // The complete program is paid for before its first action is executed.
+        self.energy -= cost;
+        self.action_queue.extend(commands);
+        if self.action_queue.is_empty() {
+            self.publish_result(Ok("The script was registered. Persistent listeners are watching the world.".to_owned()));
+        }
+    }
+
+    fn publish_result(&mut self, result: Result<String, String>) {
         let (ok, message) = match result {
             Ok(message) => (true, message),
             Err(message) => (false, message),
@@ -437,7 +529,6 @@ impl Simulation {
             escape_json(&message)
         );
         self.result_sequence = self.result_sequence.wrapping_add(1);
-        self.refresh_mesh_buffers();
     }
 
     fn execute(&mut self, command: Command) -> Result<String, String> {
@@ -577,12 +668,252 @@ impl Simulation {
                 self.discover_action("action.upright");
                 Ok(format!("{object_name} is being brought upright."))
             }
+            Command::Paint { object: name, colour } => {
+                let index = self.objects.iter().position(|object| object.name == name)
+                    .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
+                if self.objects[index].kind == ObjectKind::Garden {
+                    return Err("The garden itself cannot be painted; choose a movable desk object.".to_owned());
+                }
+                self.colours[index] = colour;
+                self.discover_action("action.paint");
+                Ok(format!("{name} is now painted {}.", colour_name(colour)))
+            }
+            Command::RollEast(name) => {
+                let index = self.objects.iter().position(|object| object.name == name)
+                    .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
+                if self.objects[index].kind != ObjectKind::Pencil {
+                    return Err(format!("{name} is not a rollable pencil."));
+                }
+                self.bodies[index].vx += 1.8;
+                self.discover_action("action.roll_east");
+                Ok(format!("{name} rolls east."))
+            }
+            Command::ShiftDown => {
+                let mut shifted = 0;
+                for object in &mut self.objects {
+                    if object.kind == ObjectKind::Pencil {
+                        object.z = (object.z + 0.12).clamp(0.12, 9.88);
+                        shifted += 1;
+                    }
+                }
+                self.discover_action("action.shift_down");
+                Ok(format!("The loose pencils shift down the desk ({shifted} moved)."))
+            }
             Command::Carve { from, to, depth, width } => {
                 let start = self.resolve_position(&from)?;
                 let end = self.resolve_position(&to)?;
                 self.carve_line(start, end, depth, width);
                 self.discover_action("action.carve");
                 Ok(format!("A groove now runs from ({:.1}, {:.1}) to ({:.1}, {:.1}).", start.0, start.1, end.0, end.1))
+            }
+        }
+    }
+
+    fn compile_statements(&mut self, statements: &[Statement], output: &mut Vec<Command>) -> Result<(), String> {
+        for statement in statements {
+            match statement {
+                Statement::RawCommand(source) => {
+                    let expanded = self.expand_aliases(source);
+                    output.push(parser::parse(&expanded, &self.glossary)?);
+                }
+                Statement::Pipe { object, steps } => {
+                    for step in steps {
+                        output.push(match step {
+                            PipeStep::RollEast => Command::RollEast(object.clone()),
+                            PipeStep::Paint(colour) => Command::Paint { object: object.clone(), colour: *colour },
+                        });
+                    }
+                }
+                Statement::Repeat { count, body } => {
+                    for _ in 0..*count {
+                        self.compile_statements(body, output)?;
+                    }
+                }
+                Statement::If { condition, body } => {
+                    // Immediate conditions are evaluated exactly once during compilation.
+                    if self.condition_met(condition) {
+                        self.compile_statements(body, output)?;
+                    }
+                }
+                Statement::When { condition, body } => {
+                    let mut commands = Vec::new();
+                    self.compile_statements(body, &mut commands)?;
+                    if !commands.is_empty() {
+                        self.listeners.push(WhenListener {
+                            condition: condition.clone(),
+                            commands,
+                            was_true: false,
+                        });
+                    }
+                }
+                Statement::Let { name, value } => {
+                    if let Some((_, existing)) = self.aliases.iter_mut().find(|(key, _)| key == name) {
+                        *existing = value.clone();
+                    } else {
+                        self.aliases.push((name.clone(), value.clone()));
+                    }
+                }
+            }
+            if output.len() > 64 {
+                return Err("This script expands to more than 64 queued actions. Split it into smaller scripts.".to_owned());
+            }
+        }
+        Ok(())
+    }
+
+    fn expand_aliases(&self, source: &str) -> String {
+        let bytes = source.as_bytes();
+        let mut output = String::with_capacity(source.len());
+        let mut cursor = 0;
+        while cursor < bytes.len() {
+            if bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_' {
+                let start = cursor;
+                cursor += 1;
+                while cursor < bytes.len() && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_') {
+                    cursor += 1;
+                }
+                let word = &source[start..cursor];
+                if let Some((_, value)) = self.aliases.iter().rev().find(|(name, _)| name == word) {
+                    output.push_str(value);
+                } else {
+                    output.push_str(word);
+                }
+            } else {
+                let character = source[cursor..].chars().next().unwrap_or(' ');
+                output.push(character);
+                cursor += character.len_utf8();
+            }
+        }
+        output
+    }
+
+    fn condition_met(&self, condition: &Condition) -> bool {
+        match condition {
+            Condition::GardenMoistureBelow(threshold) => {
+                let Some(garden) = self.objects.iter().find(|object| object.kind == ObjectKind::Garden) else {
+                    return false;
+                };
+                let gx = (garden.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
+                let gz = (garden.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
+                let mut total = 0.0;
+                let mut count = 0.0;
+                for dz in -4..=4 {
+                    for dx in -4..=4 {
+                        let x = gx + dx;
+                        let z = gz + dz;
+                        if x >= 0 && z >= 0 && x < GRID_SIZE as isize && z < GRID_SIZE as isize {
+                            total += self.water[z as usize * GRID_SIZE + x as usize];
+                            count += 1.0;
+                        }
+                    }
+                }
+                let moisture = if count > 0.0 {
+                    (total / count / 0.12 * 100.0).clamp(0.0, 100.0)
+                } else {
+                    0.0
+                };
+                moisture < *threshold
+            }
+        }
+    }
+
+    fn update_listeners(&mut self) {
+        let mut triggered = Vec::new();
+        for index in 0..self.listeners.len() {
+            let condition = self.listeners[index].condition.clone();
+            let met = self.condition_met(&condition);
+            let was_true = self.listeners[index].was_true;
+            self.listeners[index].was_true = met;
+            if met && !was_true {
+                triggered.extend(self.listeners[index].commands.iter().cloned());
+            }
+        }
+        for command in triggered {
+            let result = self.execute(command);
+            self.publish_result(result);
+        }
+    }
+
+    fn update_rigid_bodies(&mut self, dt: f32) {
+        for index in 0..self.objects.len() {
+            if self.objects[index].kind != ObjectKind::Pencil {
+                continue;
+            }
+
+            let x = (self.objects[index].x / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                .round().clamp(1.0, (GRID_SIZE - 2) as f32) as usize;
+            let z = (self.objects[index].z / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                .round().clamp(1.0, (GRID_SIZE - 2) as f32) as usize;
+            let cell = z * GRID_SIZE + x;
+            let slope_x = (self.height[cell + 1] - self.height[cell - 1]) / (2.0 * CELL_SIZE);
+            let slope_z = (self.height[cell + GRID_SIZE] - self.height[cell - GRID_SIZE]) / (2.0 * CELL_SIZE);
+            let (water_vx, water_vz) = self.flow.velocity_at(x, z);
+
+            let body = &mut self.bodies[index];
+            body.vx += (-slope_x * 0.55 + water_vx * 1.35) * dt;
+            body.vz += (-slope_z * 0.55 + water_vz * 1.35) * dt;
+            let damping = (1.0 - body.friction * dt).clamp(0.0, 1.0);
+            body.vx *= damping;
+            body.vz *= damping;
+
+            let speed = (body.vx * body.vx + body.vz * body.vz).sqrt();
+            if speed > 3.5 {
+                let scale = 3.5 / speed;
+                body.vx *= scale;
+                body.vz *= scale;
+            }
+
+            self.objects[index].x += body.vx * dt;
+            self.objects[index].z += body.vz * dt;
+            if self.objects[index].x < 0.12 {
+                self.objects[index].x = 0.12;
+                body.vx = body.vx.abs() * body.restitution;
+            } else if self.objects[index].x > 9.88 {
+                self.objects[index].x = 9.88;
+                body.vx = -body.vx.abs() * body.restitution;
+            }
+            if self.objects[index].z < 0.12 {
+                self.objects[index].z = 0.12;
+                body.vz = body.vz.abs() * body.restitution;
+            } else if self.objects[index].z > 9.88 {
+                self.objects[index].z = 9.88;
+                body.vz = -body.vz.abs() * body.restitution;
+            }
+            if body.vx.abs() + body.vz.abs() > 0.025 {
+                self.objects[index].yaw = body.vz.atan2(body.vx);
+            }
+        }
+
+        // The four small pencil bodies only need a compact circle-collision pass.
+        for a in 0..self.objects.len() {
+            if self.objects[a].kind != ObjectKind::Pencil { continue; }
+            for b in (a + 1)..self.objects.len() {
+                if self.objects[b].kind != ObjectKind::Pencil { continue; }
+                let dx = self.objects[b].x - self.objects[a].x;
+                let dz = self.objects[b].z - self.objects[a].z;
+                let distance_sq = dx * dx + dz * dz;
+                let min_distance = 0.19;
+                if distance_sq >= min_distance * min_distance { continue; }
+                let distance = distance_sq.sqrt().max(0.0001);
+                let nx = dx / distance;
+                let nz = dz / distance;
+                let relative = (self.bodies[b].vx - self.bodies[a].vx) * nx
+                    + (self.bodies[b].vz - self.bodies[a].vz) * nz;
+                let inverse_a = 1.0 / self.bodies[a].mass;
+                let inverse_b = 1.0 / self.bodies[b].mass;
+                if relative < 0.0 {
+                    let restitution = self.bodies[a].restitution.min(self.bodies[b].restitution);
+                    let impulse = -(1.0 + restitution) * relative / (inverse_a + inverse_b);
+                    self.bodies[a].vx -= impulse * inverse_a * nx;
+                    self.bodies[a].vz -= impulse * inverse_a * nz;
+                    self.bodies[b].vx += impulse * inverse_b * nx;
+                    self.bodies[b].vz += impulse * inverse_b * nz;
+                }
+                let overlap = min_distance - distance;
+                self.objects[a].x -= nx * overlap * 0.5;
+                self.objects[a].z -= nz * overlap * 0.5;
+                self.objects[b].x += nx * overlap * 0.5;
+                self.objects[b].z += nz * overlap * 0.5;
             }
         }
     }
@@ -769,6 +1100,27 @@ fn add_water_volume(water: &mut [f32], x: f32, z: f32, volume: f32) {
     }
 }
 
+fn command_energy_cost(command: &Command) -> f32 {
+    match command {
+        Command::ShiftDown => 1.0,
+        _ => 12.0,
+    }
+}
+
+fn colour_name(index: u8) -> &'static str {
+    match index {
+        1 => "red",
+        2 => "blue",
+        3 => "green",
+        4 => "yellow",
+        5 => "brown",
+        6 => "purple",
+        7 => "white",
+        8 => "black",
+        _ => "original",
+    }
+}
+
 fn escape_json(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 8);
     for character in value.chars() {
@@ -902,6 +1254,73 @@ mod tests {
         }
         let center = 38 * GRID_SIZE + 64;
         assert!(simulation.height[center] < -0.1);
+    }
+
+    #[test]
+    fn chained_commands_are_charged_upfront_and_run_in_order() {
+        let mut simulation = ready_simulation();
+        let energy_before = simulation.energy;
+        simulation.enqueue_command("uncap bottle_1 ; paint pencil_1 red");
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.action_queue.len(), 2);
+        assert!(simulation.energy <= energy_before - 24.0 + 0.001);
+        simulation.cooldown = 0.0;
+        simulation.process_queue();
+        assert!(!simulation.objects[0].cap_on);
+        assert_eq!(simulation.colours[5], 0);
+        simulation.cooldown = 0.0;
+        simulation.process_queue();
+        assert_eq!(simulation.colours[5], 1);
+    }
+
+    #[test]
+    fn repeat_and_let_expand_before_command_parsing() {
+        let mut simulation = ready_simulation();
+        simulation.enqueue_command("let trench = (1,2) to (7,2) ; repeat 2 { carve from trench depth 0.1 }");
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.action_queue.len(), 2);
+    }
+
+    #[test]
+    fn if_runs_once_and_when_registers_a_persistent_listener() {
+        let mut simulation = ready_simulation();
+        simulation.enqueue_command("if garden.moisture < 20% { paint pencil_1 red } ; when garden.moisture < 30% { paint pencil_2 blue }");
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.action_queue.len(), 1);
+        assert_eq!(simulation.listeners.len(), 1);
+        simulation.cooldown = 0.0;
+        simulation.process_queue();
+        assert_eq!(simulation.colours[5], 1);
+        simulation.update_listeners();
+        assert_eq!(simulation.colours[6], 2);
+    }
+
+    #[test]
+    fn pipes_roll_and_paint_the_selected_pencil() {
+        let mut simulation = ready_simulation();
+        simulation.enqueue_command("pencil_1 -> roll_east -> paint red");
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.action_queue.len(), 2);
+        simulation.cooldown = 0.0;
+        simulation.process_queue();
+        assert!(simulation.bodies[5].vx > 0.0);
+        simulation.cooldown = 0.0;
+        simulation.process_queue();
+        assert_eq!(simulation.colours[5], 1);
+    }
+
+    #[test]
+    fn pencil_bodies_collide_and_resolve_overlap() {
+        let mut simulation = ready_simulation();
+        simulation.objects[5].x = 4.0;
+        simulation.objects[5].z = 5.0;
+        simulation.objects[6].x = 4.15;
+        simulation.objects[6].z = 5.0;
+        simulation.bodies[5].vx = 1.0;
+        simulation.bodies[6].vx = -0.5;
+        simulation.update_rigid_bodies(FIXED_STEP);
+        assert!(simulation.objects[5].x < simulation.objects[6].x);
+        assert!((simulation.bodies[5].vx + simulation.bodies[6].vx).abs() < 2.0);
     }
 
     #[test]

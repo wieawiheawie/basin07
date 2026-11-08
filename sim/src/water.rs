@@ -9,6 +9,8 @@ pub struct FlowBuffers {
     south: Vec<f32>,
     north: Vec<f32>,
     delta: Vec<f32>,
+    velocity_x: Vec<f32>,
+    velocity_z: Vec<f32>,
 }
 
 impl FlowBuffers {
@@ -19,7 +21,14 @@ impl FlowBuffers {
             south: vec![0.0; GRID_CELLS],
             north: vec![0.0; GRID_CELLS],
             delta: vec![0.0; GRID_CELLS],
+            velocity_x: vec![0.0; GRID_CELLS],
+            velocity_z: vec![0.0; GRID_CELLS],
         }
+    }
+
+    pub fn velocity_at(&self, x: usize, z: usize) -> (f32, f32) {
+        let index = z.min(GRID_SIZE - 1) * GRID_SIZE + x.min(GRID_SIZE - 1);
+        (self.velocity_x[index], self.velocity_z[index])
     }
 
     pub fn step(
@@ -91,6 +100,9 @@ impl FlowBuffers {
                     + self.west[index]
                     + self.south[index]
                     + self.north[index];
+                let safe_dt = dt.max(0.000001);
+                self.velocity_x[index] = (self.east[index] - self.west[index]) / safe_dt;
+                self.velocity_z[index] = (self.south[index] - self.north[index]) / safe_dt;
 
                 self.delta[index] -= outgoing;
                 if x + 1 < GRID_SIZE {
