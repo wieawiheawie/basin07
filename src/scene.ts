@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import type { Simulation } from "../pkg/deskbound_sim.js";
 
 type HoverCallback = (name: string) => void;
@@ -19,6 +24,16 @@ interface ObjectVisual {
 const GRID = 128;
 const DESK_SIZE = 10;
 const vertexCount = GRID * GRID;
+const RESIDENT_HEIGHT = 0.40;
+const PACK_SCALE = RESIDENT_HEIGHT / 5;
+const TABLE_TOP_HEIGHT = 3 * PACK_SCALE;
+const PLATFORM_THICKNESS = 0.76 * PACK_SCALE;
+const TAVERN_SURFACE_Y = 0.431 + PLATFORM_THICKNESS;
+const TAVERN_TABLE_Y = TAVERN_SURFACE_Y + TABLE_TOP_HEIGHT;
+const TAVERN_MODELS = [
+  "round_table", "stool", "tankard", "mug", "bread_basket", "cheese_wheel",
+  "barrel", "crate", "sack", "candle", "lantern", "plank_floor"
+] as const;
 
 function woodTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -102,7 +117,7 @@ function makeBox(
   const geometry = new THREE.BoxGeometry(size[0], size[1], size[2], radiusSegments, 1, radiusSegments);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(position[0], position[1], position[2]);
-  mesh.castShadow = true;
+  mesh.castShadow = false;
   mesh.receiveShadow = true;
   parent.add(mesh);
   return mesh;
@@ -186,6 +201,71 @@ function createDeskScene(
     new THREE.MeshStandardMaterial({ color: "#c06f50", roughness: 0.72 }),
     new THREE.MeshStandardMaterial({ color: "#85947b", roughness: 0.72 })
   ];
+
+  const tavernWood = new THREE.MeshStandardMaterial({ color: "#a9794e", roughness: 0.84 });
+  const tavernWoodLight = new THREE.MeshStandardMaterial({ color: "#c29562", roughness: 0.82 });
+  const tavernIron = new THREE.MeshStandardMaterial({ color: "#776657", metalness: 0.35, roughness: 0.62 });
+  const tavernCloth = new THREE.MeshStandardMaterial({ color: "#9d8065", roughness: 0.95 });
+  const tavernCeramic = new THREE.MeshStandardMaterial({ color: "#cbb99b", roughness: 0.55 });
+  const tavernCheese = new THREE.MeshStandardMaterial({ color: "#dfbd68", roughness: 0.76 });
+  const tavernFlame = new THREE.MeshStandardMaterial({
+    color: "#ffbf6a", emissive: "#ff9b35", emissiveIntensity: 2.4, roughness: 0.35
+  });
+
+  function makeTavernFallback(kind: string): THREE.Group {
+    const group = new THREE.Group();
+    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, position: [number,number,number]) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(...position);
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    };
+    if (kind === "round_table") {
+      add(new THREE.CylinderGeometry(1.97, 1.97, 0.18, 20), tavernWoodLight, [0, 2.61, 0]).castShadow = true;
+      add(new THREE.CylinderGeometry(0.20, 0.26, 2.55, 8), tavernWood, [0, 1.27, 0]);
+      add(new THREE.CylinderGeometry(0.72, 0.72, 0.16, 10), tavernWood, [0, 0.12, 0]);
+    } else if (kind === "stool") {
+      add(new THREE.CylinderGeometry(0.72, 0.72, 0.16, 12), tavernWoodLight, [0, 1.8, 0]).castShadow = true;
+      for (const x of [-0.48, 0.48]) for (const z of [-0.48, 0.48]) {
+        add(new THREE.CylinderGeometry(0.085, 0.10, 1.76, 6), tavernWood, [x, 0.88, z]);
+      }
+    } else if (kind === "tankard" || kind === "mug") {
+      const radius = kind === "tankard" ? 0.30 : 0.34;
+      const height = kind === "tankard" ? 0.55 : 0.50;
+      add(new THREE.CylinderGeometry(radius * 0.94, radius, height, 10, 1, true), tavernCeramic, [0,height/2,0]);
+      add(new THREE.TorusGeometry(radius, 0.055, 6, 12), tavernCeramic, [radius * 1.08,height*0.52,0]).rotation.y = Math.PI/2;
+    } else if (kind === "bread_basket") {
+      add(new THREE.BoxGeometry(1.1,0.22,0.88), tavernWood, [0,0.14,0]);
+      for (let i=0;i<3;i++) add(new THREE.SphereGeometry(0.22,8,6), tavernCheese, [-0.28+i*0.28,0.37,0]);
+    } else if (kind === "cheese_wheel") {
+      add(new THREE.CylinderGeometry(0.85,0.85,0.24,14), tavernCheese, [0,0.12,0]).castShadow = true;
+    } else if (kind === "barrel") {
+      add(new THREE.CylinderGeometry(1.02,0.94,2.68,12), tavernWood, [0,1.34,0]).castShadow = true;
+      for (const y of [0.42,2.24]) add(new THREE.TorusGeometry(1.02,0.055,5,14), tavernIron, [0,y,0]).rotation.x = Math.PI/2;
+      add(new THREE.CylinderGeometry(0.98,0.98,0.10,12), tavernWoodLight, [0,2.70,0]);
+    } else if (kind === "crate") {
+      add(new THREE.BoxGeometry(2.4,2.4,2.4), tavernWood, [0,1.2,0]).castShadow = true;
+      for (const y of [0.18,2.22]) add(new THREE.BoxGeometry(2.48,0.09,2.48), tavernWoodLight, [0,y,0]);
+    } else if (kind === "sack") {
+      const sack = add(new THREE.SphereGeometry(0.73,10,8), tavernCloth, [0,0.78,0]);
+      sack.scale.set(1,1.15,0.82);
+      add(new THREE.CylinderGeometry(0.22,0.30,0.35,8), tavernCloth, [0,1.62,0]);
+    } else if (kind === "candle") {
+      add(new THREE.CylinderGeometry(0.13,0.15,0.54,8), tavernCeramic, [0,0.27,0]);
+      add(new THREE.ConeGeometry(0.085,0.25,6), tavernFlame, [0,0.67,0]);
+    } else if (kind === "lantern") {
+      add(new THREE.BoxGeometry(0.42,0.60,0.42), new THREE.MeshStandardMaterial({color:"#e4b86e",emissive:"#bb742d",emissiveIntensity:0.3,transparent:true,opacity:0.58}), [0,0.38,0]);
+      add(new THREE.BoxGeometry(0.52,0.07,0.52), tavernIron, [0,0.02,0]);
+      add(new THREE.BoxGeometry(0.52,0.07,0.52), tavernIron, [0,0.74,0]);
+      add(new THREE.ConeGeometry(0.34,0.28,4), tavernIron, [0,0.91,0]);
+    } else if (kind === "plank_floor") {
+      add(new THREE.BoxGeometry(12,0.12,12), tavernWood, [0,0,0]).castShadow = false;
+      for (let i=0;i<6;i++) add(new THREE.BoxGeometry(1.96,0.035,11.9), tavernWoodLight, [-5+i*2,0.085,0]);
+    }
+    group.scale.setScalar(PACK_SCALE);
+    return group;
+  }
 
   // Room around the miniature world.
   makeBox(scene, [32, 0.22, 26], [0, -1.08, 0], floorMat);
@@ -336,7 +416,7 @@ function createDeskScene(
   const lampLight = new THREE.SpotLight("#ffcb86", 62, 11, Math.PI / 4, 0.68, 2);
   lampLight.position.set(-3.6, 2.75, -3.5);
   lampLight.target.position.set(-1.7, 0.2, -1.1);
-  lampLight.castShadow = true;
+  lampLight.castShadow = false;
   lampLight.shadow.mapSize.set(768, 768);
   scene.add(lampLight, lampLight.target);
 
@@ -466,15 +546,44 @@ function createDeskScene(
     return { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind: "garden" };
   }
 
+  const modelCache = new Map<string, THREE.Group>();
+  const modelTargets = new Map<string, THREE.Group[]>();
+  const barrelLights: { light: THREE.PointLight; phase: number; base: number }[] = [];
+
   for (let index = 0; index < simulation.objectCount(); index += 1) {
     const kind = simulation.objectKind(index);
     let visual: ObjectVisual;
+    const isTavernModel = (TAVERN_MODELS as readonly string[]).includes(kind);
     if (kind === "bottle") visual = makeBottle(index);
     else if (kind === "book") visual = makeBook(index);
     else if (kind === "pencil") visual = makePencil(index);
-    else visual = makeGarden();
+    else if (kind === "garden") visual = makeGarden();
+    else {
+      const root = new THREE.Group();
+      root.add(makeTavernFallback(kind));
+      visual = { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind };
+      if (isTavernModel) {
+        const targets = modelTargets.get(kind) ?? [];
+        targets.push(root);
+        modelTargets.set(kind, targets);
+      }
+      if (kind === "lantern") {
+        const light = new THREE.PointLight("#ffbe78", 1.15, 2.6, 2);
+        light.position.set(0, 0.34, 0);
+        root.add(light);
+        barrelLights.push({ light, phase: barrelLights.length * 1.73, base: 1.15 });
+      }
+    }
 
-    visual.root.position.set(simulation.objectX(index) - 5, 0.36, simulation.objectZ(index) - 5);
+    const onTavernTable = ["tankard","mug","bread_basket","cheese_wheel","candle","lantern"].includes(kind);
+    const y = isTavernModel
+      ? (kind === "plank_floor" || kind === "barrel" || kind === "crate" || kind === "sack"
+          ? 0.431
+          : kind === "round_table" || kind === "stool"
+            ? TAVERN_SURFACE_Y
+            : onTavernTable ? TAVERN_TABLE_Y : 0.431)
+      : 0.36;
+    visual.root.position.set(simulation.objectX(index) - 5, y, simulation.objectZ(index) - 5);
     visual.root.rotation.y = simulation.objectYaw(index);
     visual.root.userData.label = simulation.objectName(index);
     visual.root.userData.objectIndex = index;
@@ -482,6 +591,87 @@ function createDeskScene(
     pickables.push(visual.root);
     objectVisuals.push(visual);
   }
+
+  function warmGrade(model: THREE.Group, modelId: string): void {
+    model.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+      child.receiveShadow = true;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        const name = material.name.toLowerCase();
+        if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
+          if (name.includes("wood")) material.color.lerp(new THREE.Color("#c58e59"), 0.18);
+          else if (name.includes("iron") || name.includes("metal")) material.color.lerp(new THREE.Color("#b18c66"), 0.12);
+          else if (name.includes("cloth")) material.color.lerp(new THREE.Color("#b99a76"), 0.12);
+          else if (name.includes("glass")) material.color.lerp(new THREE.Color("#b4c5b0"), 0.08);
+          if (name.includes("flame") || modelId === "candle" && name.includes("fire")) {
+            material.emissive = new THREE.Color("#ff9b42");
+            material.emissiveIntensity = 2.4;
+          }
+          material.needsUpdate = true;
+        }
+      }
+      if (modelId === "candle" && (child.name.toLowerCase().includes("flame") || child.name.toLowerCase().includes("fire"))) {
+        const list = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of list) {
+          if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
+            material.emissive.set("#ff9b42");
+            material.emissiveIntensity = 2.8;
+          }
+        }
+      }
+    });
+  }
+
+  async function loadTavernModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    const status = document.getElementById("loading-status");
+    let completed = 0;
+    let loaded = 0;
+    const jobs = TAVERN_MODELS.map(async (modelId) => {
+      try {
+        const gltf = await loader.loadAsync(`/models/tavern/${modelId}.glb`);
+        const source = gltf.scene;
+        warmGrade(source, modelId);
+        source.updateMatrixWorld(true);
+        const bounds = new THREE.Box3().setFromObject(source);
+        const floorOffset = Number.isFinite(bounds.min.y) ? -bounds.min.y : 0;
+        modelCache.set(modelId, source);
+        loaded += 1;
+        for (const target of modelTargets.get(modelId) ?? []) {
+          const instance = source.clone(true);
+          instance.scale.setScalar(PACK_SCALE);
+          instance.position.y += floorOffset * PACK_SCALE;
+          instance.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+              child.receiveShadow = true;
+            }
+          });
+          const oldFallback = target.children.slice();
+          for (const child of oldFallback) target.remove(child);
+          target.add(instance);
+          if (modelId === "lantern") {
+            // The lightweight point light is attached to the object root and remains separate from the GLB.
+          }
+        }
+      } catch (error) {
+        console.warn(`Tavern model ${modelId} failed to load; keeping its procedural fallback.`, error);
+      } finally {
+        completed += 1;
+        if (status) status.textContent = `Loading tavern models · ${completed}/${TAVERN_MODELS.length}`;
+      }
+    });
+    await Promise.all(jobs);
+    if (status) {
+      status.textContent = loaded === TAVERN_MODELS.length
+        ? "The tavern is ready."
+        : `Tavern ready · ${loaded}/${TAVERN_MODELS.length} models · fallbacks active`;
+      status.classList.add("complete");
+    }
+  }
+  void loadTavernModels();
 
   // A loose cap is a real mesh that remains on the tabletop once removed.
   // Place it close to the bottle base; its animation is deliberately simple.
@@ -499,6 +689,7 @@ function createDeskScene(
   scene.add(peopleBodies, peopleHeads);
   const dummy = new THREE.Object3D();
   const bodyPalette = [new THREE.Color("#c67f59"), new THREE.Color("#778e79"), new THREE.Color("#c6a16f"), new THREE.Color("#8793a9"), new THREE.Color("#b67e82")];
+  const wetBodyColor = new THREE.Color("#789fb0");
   for (let i = 0; i < peopleCount; i += 1) {
     peopleBodies.setColorAt(i, bodyPalette[i % bodyPalette.length] ?? bodyPalette[0]!);
   }
@@ -526,9 +717,16 @@ function createDeskScene(
     lowGraphics = custom.detail.low;
     renderer.shadowMap.enabled = !lowGraphics;
     keyLight.castShadow = !lowGraphics;
-    lampLight.castShadow = !lowGraphics;
+    lampLight.castShadow = false;
     dust.visible = !lowGraphics;
+    bloomPass.enabled = !lowGraphics;
   });
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.48, 0.84);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -539,8 +737,8 @@ function createDeskScene(
     pointerEvent.set((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointerEvent, camera);
     const hit = raycaster.intersectObjects(pickables, true)[0];
-    const root = hit?.object.parent?.userData.label ? hit.object.parent :
-      hit?.object.parent?.parent?.userData.label ? hit.object.parent.parent : null;
+    let root: THREE.Object3D | null = hit?.object ?? null;
+    while (root && !root.userData.label) root = root.parent;
     if (root !== hoveredRoot) {
       hoveredRoot = root;
       onHover(root ? String(root.userData.label) : "");
@@ -597,6 +795,7 @@ function createDeskScene(
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
+    composer.setSize(width, height);
   });
   resizeObserver.observe(container);
 
@@ -619,21 +818,23 @@ function createDeskScene(
 
       for (let index = 0; index < objectVisuals.length; index += 1) {
         const visual = objectVisuals[index];
-        if (!visual || visual.kind !== "bottle") continue;
-        visual.root.rotation.y = simulation.objectYaw(index);
-        visual.root.rotation.z = simulation.objectTilt(index);
-        const capped = simulation.objectCapOn(index);
-        visual.cap.visible = capped;
-        visual.looseCap.visible = !capped;
-        if (!capped) {
-          const bottleX = simulation.objectX(index);
-          const bottleZ = simulation.objectZ(index);
-          visual.looseCap.position.set(bottleX - 5 + 0.28, 0.41, bottleZ - 5 + 0.18);
-          visual.looseCap.rotation.set(0, 0.18, Math.PI / 2);
+        if (!visual) continue;
+        if (visual.kind === "bottle") {
+          visual.root.rotation.y = simulation.objectYaw(index);
+          visual.root.rotation.z = simulation.objectTilt(index);
+          const capped = simulation.objectCapOn(index);
+          visual.cap.visible = capped;
+          visual.looseCap.visible = !capped;
+          if (!capped) {
+            const bottleX = simulation.objectX(index);
+            const bottleZ = simulation.objectZ(index);
+            visual.looseCap.position.set(bottleX - 5 + 0.28, 0.41, bottleZ - 5 + 0.18);
+            visual.looseCap.rotation.set(0, 0.18, Math.PI / 2);
+          }
+          const amount = simulation.objectVolume(index) / 0.14;
+          visual.fill.scale.y = Math.max(0.002, amount);
+          visual.fill.position.y = 0.08 + 0.19 * amount;
         }
-        const amount = simulation.objectVolume(index) / 0.14;
-        visual.fill.scale.y = Math.max(0.002, amount);
-        visual.fill.position.y = 0.08 + 0.19 * amount;
       }
 
       const peopleTime = performance.now() * 0.001;
@@ -645,17 +846,19 @@ function createDeskScene(
         const z = peopleView[offset + 1] ?? 0;
         const heading = peopleView[offset + 2] ?? 0;
         const wet = peopleView[offset + 3] ?? 0;
-        const bounce = Math.sin(peopleTime * 5 + index * 1.7) * 0.018;
-        dummy.position.set(x - 5, 0.47 + bounce, z - 5);
+        const seated = (peopleView[offset + 4] ?? 0) > 0.5;
+        const bounce = seated ? 0 : Math.sin(peopleTime * 5 + index * 1.7) * 0.018;
+        const bodyY = seated ? TAVERN_SURFACE_Y + 1.8 * PACK_SCALE + 0.135 : 0.431 + 0.135;
+        dummy.position.set(x - 5, bodyY + bounce, z - 5);
         dummy.rotation.set(0, -heading, 0);
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         peopleBodies.setMatrixAt(index, dummy.matrix);
-        dummy.position.set(x - 5 + Math.cos(heading) * 0.018, 0.62 + bounce, z - 5 + Math.sin(heading) * 0.018);
+        dummy.position.set(x - 5 + Math.cos(heading) * 0.018, bodyY + 0.205 + bounce, z - 5 + Math.sin(heading) * 0.018);
         dummy.scale.setScalar(0.82);
         dummy.updateMatrix();
         peopleHeads.setMatrixAt(index, dummy.matrix);
-        if (wet > 0.1) peopleBodies.setColorAt(index, new THREE.Color("#789fb0"));
+        if (wet > 0.1) peopleBodies.setColorAt(index, wetBodyColor);
         else peopleBodies.setColorAt(index, bodyPalette[index % bodyPalette.length] ?? bodyPalette[0]!);
       }
       peopleBodies.instanceMatrix.needsUpdate = true;
@@ -674,7 +877,13 @@ function createDeskScene(
     },
     render(time: number): void {
       timeUniform.value = time;
-      renderer.render(scene, camera);
+      for (const flicker of barrelLights) {
+        flicker.light.intensity = flicker.base
+          + Math.sin(time * 7.4 + flicker.phase) * 0.07
+          + Math.sin(time * 13.2 + flicker.phase * 1.4) * 0.025;
+      }
+      if (lowGraphics) renderer.render(scene, camera);
+      else composer.render();
     }
   };
 }
