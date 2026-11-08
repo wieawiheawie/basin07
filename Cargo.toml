@@ -8,7 +8,7 @@ license = "MIT"
 
 [lib]
 name = "basin07_core"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [[bin]]
 name = "basin07"
