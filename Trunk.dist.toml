@@ -1,0 +1,11 @@
+[build]
+target = "index.html"
+dist = "dist-deploy"
+public_url = "./"
+filehash = true
+cargo_profile = "dist"
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+open = false
