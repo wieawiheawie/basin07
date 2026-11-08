@@ -1,8 +1,14 @@
+trunk-version = "0.22.1"
+
 [build]
 target = "index.html"
 dist = "dist"
 public_url = "./"
-filehash = true
+filehash = false
+minify = "never"
+
+[watch]
+ignore = ["target", "dist", "dist-deploy", ".git", ".venv", "__pycache__"]
 
 [serve]
 addresses = ["127.0.0.1"]
