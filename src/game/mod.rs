@@ -191,7 +191,6 @@ pub(crate) fn load(session: &mut GameSession) -> Result<(), String> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

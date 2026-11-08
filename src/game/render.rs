@@ -297,11 +297,19 @@ pub fn sync_scene_materials(
     // filters make their entity sets provably disjoint to Bevy's access checker.
     mut ground: Query<
         &mut MeshMaterial3d<StandardMaterial>,
-        (With<GroundVisual>, Without<TileVisual>, Without<ServiceVisual>),
+        (
+            With<GroundVisual>,
+            Without<TileVisual>,
+            Without<ServiceVisual>,
+        ),
     >,
     mut tiles: Query<
         &mut MeshMaterial3d<StandardMaterial>,
-        (With<TileVisual>, Without<GroundVisual>, Without<ServiceVisual>),
+        (
+            With<TileVisual>,
+            Without<GroundVisual>,
+            Without<ServiceVisual>,
+        ),
     >,
     mut services: Query<
         (&ServiceVisual, &mut MeshMaterial3d<StandardMaterial>),
