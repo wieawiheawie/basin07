@@ -336,7 +336,7 @@ function createDeskScene(
     terrainNormals = new Float32Array(memory.buffer, simulation.terrainNormalsPtr(), vertexCount * 3);
     waterPositions = new Float32Array(memory.buffer, simulation.waterPositionsPtr(), vertexCount * 3);
     waterNormals = new Float32Array(memory.buffer, simulation.waterNormalsPtr(), vertexCount * 3);
-    peopleView = new Float32Array(memory.buffer, simulation.peoplePtr(), simulation.peopleCount() * 4);
+    peopleView = new Float32Array(memory.buffer, simulation.peoplePtr(), simulation.peopleCount() * 5);
 
     terrainGeometry.setAttribute("position", new THREE.BufferAttribute(terrainPositions, 3).setUsage(THREE.DynamicDrawUsage));
     terrainGeometry.setAttribute("normal", new THREE.BufferAttribute(terrainNormals, 3).setUsage(THREE.DynamicDrawUsage));
@@ -571,7 +571,7 @@ function createDeskScene(
       }
       if (kind === "lantern") {
         const light = new THREE.PointLight("#ffbe78", 1.15, 2.6, 2);
-        light.position.set(0, 0.34, 0);
+        light.position.set(0, 0.055, 0);
         root.add(light);
         barrelLights.push({ light, phase: barrelLights.length * 1.73, base: 1.15 });
       }
@@ -603,10 +603,12 @@ function createDeskScene(
       for (const material of materials) {
         const name = (child.name + " " + material.name).toLowerCase();
         if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
-          if (name.includes("wood")) material.color.lerp(new THREE.Color("#c58e59"), 0.18);
-          else if (name.includes("iron") || name.includes("metal")) material.color.lerp(new THREE.Color("#b18c66"), 0.12);
+          if (name.includes("wood") || name.includes("frame") || name.includes("wicker") || name.includes("boards") || name.includes("subfloor")) {
+            material.color.lerp(new THREE.Color("#c58e59"), 0.18);
+          } else if (name.includes("iron") || name.includes("metal")) material.color.lerp(new THREE.Color("#b18c66"), 0.12);
           else if (name.includes("cloth")) material.color.lerp(new THREE.Color("#b99a76"), 0.12);
           else if (name.includes("glass")) material.color.lerp(new THREE.Color("#b4c5b0"), 0.08);
+          else if (name.includes("wax")) material.color.lerp(new THREE.Color("#eee0bd"), 0.10);
           if (name.includes("flame") || modelId === "candle" && name.includes("fire")) {
             material.emissive = new THREE.Color("#ff9b42");
             material.emissiveIntensity = 2.4;
@@ -669,6 +671,7 @@ function createDeskScene(
       }
     });
     await Promise.all(jobs);
+    updateSceneTriangleCount();
     if (status) {
       status.textContent = loaded === TAVERN_MODELS.length
         ? "The tavern is ready."
@@ -810,6 +813,7 @@ function createDeskScene(
   const timeUniform = waterMaterial.uniforms.uTime as THREE.IUniform<number>;
   let lastPeopleTime = 0;
   const performanceLabel = document.getElementById("performance-label");
+  let sceneTriangleCount = 0;
   const normalSamples = new Float32Array(120);
   const lowSamples = new Float32Array(120);
   let normalCursor = 0;
@@ -820,7 +824,20 @@ function createDeskScene(
   let lowTotal = 0;
   let lastFrameTime = 0;
   let lastMetricsTime = 0;
-  renderer.info.autoReset = false;
+
+  function updateSceneTriangleCount(): void {
+    let triangles = 0;
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const position = object.geometry.getAttribute("position");
+      const available = object.geometry.index?.count ?? position?.count ?? 0;
+      const rangeCount = object.geometry.drawRange.count;
+      const drawCount = Number.isFinite(rangeCount) ? Math.min(available, rangeCount) : available;
+      const instances = object instanceof THREE.InstancedMesh ? object.count : 1;
+      triangles += Math.floor(drawCount / 3) * instances;
+    });
+    sceneTriangleCount = triangles;
+  }
 
   return {
     sync(): void {
@@ -921,7 +938,6 @@ function createDeskScene(
           normalCount = Math.min(normalCount + 1, normalSamples.length);
         }
       }
-      renderer.info.reset();
       if (lowGraphics) renderer.render(scene, camera);
       else composer.render();
 
@@ -929,7 +945,7 @@ function createDeskScene(
         lastMetricsTime = time;
         const normal = normalCount ? (normalTotal / normalCount).toFixed(1) + " ms" : "—";
         const low = lowCount ? (lowTotal / lowCount).toFixed(1) + " ms" : "—";
-        performanceLabel.textContent = "Scene " + renderer.info.render.triangles.toLocaleString() +
+        performanceLabel.textContent = "Scene " + sceneTriangleCount.toLocaleString() +
           " tris · Normal " + normal + " · Low " + low;
       }
     }
