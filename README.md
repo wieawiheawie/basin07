@@ -74,7 +74,9 @@ The help command lists discovered commands. Unknown command words produce a clos
 
 The medieval pack integration uses Furniture_01.fbx as the tavern table. The pack does not include an exact stool, bread-basket or lantern asset, so the closest included seat/container/fire props are used, with procedural fallbacks for missing or unsuitable models. See ASSETS.md for the mapping and licence.
 
-The Rust simulation owns fixed-step physics for the loose pencils: mass, friction, restitution, collisions, slope response and water-flow drag. Three.js reads object transforms and colour bytes from WASM memory. This is a compact custom tabletop solver, not a full 3D rigid-body engine. The garden remains decorative; mugs do not yet store water.
+The Rust simulation owns fixed-step physics for desk props: mass, friction, restitution, collisions, slope response and water-flow drag. Grabbing uses a spring constraint, so heavy objects lag behind the cursor and keep their momentum when released. Three.js reads object transforms and colour bytes from WASM memory. This is a compact custom tabletop solver, not a full 3D rigid-body engine.
+
+The five residents are animated Quaternius CC0 characters. They select tasks from current world conditions and individual needs: they walk to bottles, uncap and push them toward dry soil, dig furrows, eat and rest. Their actions update the same Rust physics and water simulation as player interactions. See ASSETS.md for model links and licences. The garden remains decorative; mugs do not yet store water.
 
 ## Project layout
 

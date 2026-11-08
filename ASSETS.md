@@ -31,3 +31,17 @@ The pack does not contain exact equivalents for every tavern prop. These are the
 | plank floor | WoodPlank_01.fbx | Repeated as an instanced platform |
 
 A procedural version remains available for each prop if the local import is missing or a model fails to load. The table and props are rescaled to the miniature world; imported model floor points are normalized before placement.
+
+
+## Animated resident characters
+
+The five tiny residents use rigged low-poly characters by **Quaternius**, sourced from Poly Pizza. Each of the following individual model pages explicitly identifies the asset as **Public Domain (CC0)**:
+
+| In-game character variant | Original asset | Source |
+| --- | --- | --- |
+| Business outfit | Business Man | https://poly.pizza/m/JFrLIKqvCH |
+| Hoodie | Hoodie Character | https://poly.pizza/m/gKLBoRsyKe |
+| Casual outfit | Casual Character | https://poly.pizza/m/kZ3DmIoGip |
+| Punk outfit | Punk | https://poly.pizza/m/BTALZymknF |
+
+These GLB files are committed under `public/models/residents/` because CC0 permits copying, modification and redistribution. The source files contain rigged skeletons and animation clips including Idle, Walk and Interact. Deskbound loads each unique GLB once, then skeleton-clones the scene for resident instances. Quaternius is credited voluntarily; the CC0 dedication does not require attribution.

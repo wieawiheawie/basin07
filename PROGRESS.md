@@ -15,9 +15,10 @@
 ## Physics and renderer
 
 - Rust owns the fixed-step height/water grids and object state. Full 4×4 object transform matrices and colour bytes are exposed as WebAssembly memory views; Three.js reads those views directly.
-- A compact custom fixed-step rigid-body approximation is active for the four pencils: mass, friction, restitution, pairwise circle collision impulses, overlap resolution, boundary bounce, height-grid slope acceleration and water-flow drag.
-- This is a 2D tabletop solver with visual 3D representation, not Rapier and not a full 3D rigid-body engine. Other props remain static except their scripted state.
-- Water flow buffers expose an approximate local velocity used by the pencil drag calculation.
+- Rust owns a fixed-step tabletop rigid-body approximation for bottles, books, pencils, tankards, mugs, food, stools, barrels, crates, sacks, candles and lanterns. Bodies have per-kind mass, radius, friction and restitution, with pairwise collision impulses, tangential friction, positional correction, angular response, boundary bounce, slope acceleration and water-flow drag.
+- Picking up or dragging an object uses a spring constraint in WASM. Mass affects acceleration and lag; releasing a body preserves its velocity and collision momentum. This remains a compact 2D tabletop solver with visual 3D representation, not Rapier or a full 3D rigid-body engine.
+- Uncapped bottles can be tipped by collisions and by resident pushes. Tilted bottles drain their finite volume into the water grid in the direction of their spout; internal transfer is volume-conserving apart from existing grid-edge spill/evaporation.
+- Water flow buffers expose an approximate local velocity used by light-body drag.
 - Three.js reuses allocated typed-array views; no per-frame object-transform arrays are created in the renderer sync path.
 - Scene triangles and separate 120-frame Normal/Low requestAnimationFrame interval averages are shown in the HUD. Real device/browser values remain to be measured in the target Codespace.
 
@@ -55,7 +56,11 @@
 - Rust crate with a 128 × 128 height grid, fixed 60 Hz stepping, water depth grid, bottle and rain-barrel state, smallfolk positions and command energy queue.
 - Internal water transfers conserve volume apart from configured evaporation and edge spilling.
 - The garden is decorative; sprouts do not grow or consume water.
-- People follow simple deterministic tavern targets, then sit or idle; there are no needs, jobs, social behaviour or long-term goals.
+- Five residents use four distinct CC0 Quaternius rigged GLB variants. Each unique GLB is loaded once, skeleton-cloned for reuse, and animated with Idle, Walk and Interact clips.
+- Residents carry hunger, fatigue, diligence and curiosity values. Each periodically scores watering, digging, eating, resting and wandering tasks using current garden moisture, water availability, food proximity and their own traits. Tasks are not assigned by a fixed per-person schedule.
+- Watering agents find a nearby bottle with remaining water, approach it, uncap it if needed, then push it toward the garden. The bottle is tipped through the same physics state as other collisions and pours into the height/water grid along its spout direction. Other agents may dig while the water is carried.
+- Digging agents cut short Gaussian furrows in the simulation height grid. The visible garden soil mesh mirrors that grid and updates its normals, so resident digging is visible.
+- Needs and task selection are simple emergent utility rules, not a full social or economic simulation.
 - The mug is decorative and does not yet hold water. The rain barrel is a finite source operated by tap barrel_1.
 - Commands and aliases are not persisted between page reloads; there are no save files or scenario progression yet.
 

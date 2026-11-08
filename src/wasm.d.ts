@@ -6,6 +6,9 @@ declare module "*deskbound_sim.js" {
     isDiscovered(actionId: string): boolean;
     enqueueCommand(source: string): boolean;
     moveObject(index: number, x: number, z: number): boolean;
+    beginGrab(index: number, x: number, z: number): boolean;
+    setGrabTarget(index: number, x: number, z: number): boolean;
+    releaseGrab(index: number): boolean;
     uncapObject(index: number): boolean;
     carveStroke(fromX: number, fromZ: number, toX: number, toZ: number): boolean;
     tick(frameSeconds: number): void;

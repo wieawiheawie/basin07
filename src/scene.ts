@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { medievalModelBase64, medievalTextureBase64, medievalPackAvailable } from "virtual:medieval-props";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -22,6 +24,13 @@ interface ObjectVisual {
   looseCap: THREE.Group;
   fill: THREE.Mesh;
   kind: string;
+}
+
+interface ResidentRig {
+  root: THREE.Group;
+  mixer: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  current: THREE.AnimationAction;
 }
 
 const GRID = 128;
@@ -378,7 +387,7 @@ function createDeskScene(
     terrainNormals = new Float32Array(memory.buffer, simulation.terrainNormalsPtr(), vertexCount * 3);
     waterPositions = new Float32Array(memory.buffer, simulation.waterPositionsPtr(), vertexCount * 3);
     waterNormals = new Float32Array(memory.buffer, simulation.waterNormalsPtr(), vertexCount * 3);
-    peopleView = new Float32Array(memory.buffer, simulation.peoplePtr(), simulation.peopleCount() * 5);
+    peopleView = new Float32Array(memory.buffer, simulation.peoplePtr(), simulation.peopleCount() * 7);
     objectTransformsView = new Float32Array(memory.buffer, simulation.objectTransformsPtr(), simulation.objectCount() * 16);
     objectColoursView = new Uint8Array(memory.buffer, simulation.objectColoursPtr(), simulation.objectCount());
 
@@ -576,6 +585,8 @@ function createDeskScene(
   }
 
   let gardenSoilMesh: THREE.Mesh | null = null;
+  let gardenSoilLastHeights = new Float32Array(0);
+  let gardenObjectIndex = -1;
 
   function makeGarden(): ObjectVisual {
     const root = new THREE.Group();
@@ -590,6 +601,8 @@ function createDeskScene(
     gardenSoilMesh.position.y = 0.205;
     gardenSoilMesh.receiveShadow = true;
     gardenSoilMesh.userData.gardenSoil = true;
+    gardenSoilLastHeights = new Float32Array(soilGeometry.getAttribute("position").count);
+    gardenSoilLastHeights.fill(Number.NaN);
     root.add(gardenSoilMesh);
     const sproutGeometry = new THREE.ConeGeometry(0.09, 0.34, 5);
     for (let i = 0; i < 9; i += 1) {
@@ -671,6 +684,7 @@ function createDeskScene(
     scene.add(visual.root);
     pickables.push(visual.root);
     objectVisuals.push(visual);
+    if (kind === "garden") gardenObjectIndex = index;
   }
 
   function applyObjectColour(index: number, colourIndex: number): void {
@@ -923,13 +937,13 @@ function createDeskScene(
   let sceneTriangleCount = 0;
   void loadTavernModels();
 
-  // A loose cap is a real mesh that remains on the tabletop once removed.
-  // Place it close to the bottle base; its animation is deliberately simple.
+  // Low-poly rigged residents are loaded once per variant and skeleton-cloned for reuse.
+  // The capsules remain as a graceful fallback if a model is missing.
+  const peopleCount = simulation.peopleCount();
   const personBodyGeometry = new THREE.CapsuleGeometry(0.075, 0.12, 3, 6);
   const personHeadGeometry = new THREE.SphereGeometry(0.07, 7, 5);
   const personBodyMaterial = new THREE.MeshStandardMaterial({ color: "#d1a278", roughness: 0.8 });
   const personHeadMaterial = new THREE.MeshStandardMaterial({ color: "#e5c8a5", roughness: 0.85 });
-  const peopleCount = simulation.peopleCount();
   const peopleBodies = new THREE.InstancedMesh(personBodyGeometry, personBodyMaterial, peopleCount);
   const peopleHeads = new THREE.InstancedMesh(personHeadGeometry, personHeadMaterial, peopleCount);
   peopleBodies.castShadow = true;
@@ -943,6 +957,101 @@ function createDeskScene(
   for (let i = 0; i < peopleCount; i += 1) {
     peopleBodies.setColorAt(i, bodyPalette[i % bodyPalette.length] ?? bodyPalette[0]!);
   }
+
+  const residentPaths = [
+    "/models/residents/business_man.glb",
+    "/models/residents/hoodie.glb",
+    "/models/residents/casual.glb",
+    "/models/residents/punk.glb"
+  ] as const;
+  const residentVariants = [0, 1, 2, 3, 1];
+  const residentRigs: Array<ResidentRig | null> = new Array(peopleCount).fill(null);
+
+  function chooseResidentClip(clips: THREE.AnimationClip[], suffix: string): THREE.AnimationClip | undefined {
+    const normalized = suffix.toLowerCase();
+    return clips.find((clip) => clip.name.toLowerCase().endsWith("|" + normalized))
+      ?? clips.find((clip) => clip.name.toLowerCase().endsWith(normalized));
+  }
+
+  function setResidentMotion(rig: ResidentRig, motion: "idle" | "walk" | "work" | "sit"): void {
+    const next = rig.actions.get(motion) ?? rig.actions.get("idle");
+    if (!next || next === rig.current) return;
+    next.reset().fadeIn(0.22).play();
+    rig.current.fadeOut(0.22);
+    rig.current = next;
+  }
+
+  async function loadResidentModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    const cache = new Map<string, { scene: THREE.Group; animations: THREE.AnimationClip[] }>();
+    const status = document.getElementById("loading-status");
+    let completed = 0;
+    for (const path of residentPaths) {
+      try {
+        const gltf = await loader.loadAsync(path);
+        cache.set(path, { scene: gltf.scene, animations: gltf.animations });
+      } catch (error) {
+        console.warn("Resident model failed to load:", path, error);
+      }
+      completed += 1;
+      if (status) status.textContent = "Loading residents · " + completed + "/" + residentPaths.length;
+    }
+
+    for (let index = 0; index < peopleCount; index += 1) {
+      const path = residentPaths[residentVariants[index] ?? 0]!;
+      const source = cache.get(path);
+      if (!source) continue;
+      const character = cloneSkinned(source.scene);
+      const bounds = new THREE.Box3().setFromObject(character);
+      const dimensions = bounds.getSize(new THREE.Vector3());
+      const scale = RESIDENT_HEIGHT / Math.max(0.001, dimensions.y);
+      character.scale.setScalar(scale);
+      character.position.y = -bounds.min.y * scale;
+      character.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
+      });
+
+      const root = new THREE.Group();
+      root.add(character);
+      root.position.set((peopleView[index * 7] ?? 5) - 5, 0.431, (peopleView[index * 7 + 1] ?? 5) - 5);
+      scene.add(root);
+
+      const mixer = new THREE.AnimationMixer(character);
+      const actions = new Map<string, THREE.AnimationAction>();
+      const idle = chooseResidentClip(source.animations, "idle")
+        ?? chooseResidentClip(source.animations, "idle_neutral");
+      const walk = chooseResidentClip(source.animations, "walk");
+      const work = chooseResidentClip(source.animations, "interact");
+      const sit = chooseResidentClip(source.animations, "sit") ?? idle;
+      for (const [name, clip] of [["idle", idle], ["walk", walk], ["work", work], ["sit", sit]] as const) {
+        if (clip && !actions.has(name)) {
+          actions.set(name, mixer.clipAction(clip).setLoop(THREE.LoopRepeat, Infinity));
+        }
+      }
+      const idleAction = actions.get("idle") ?? actions.values().next().value;
+      if (!idleAction) {
+        root.remove(character);
+        scene.remove(root);
+        continue;
+      }
+      idleAction.play();
+      residentRigs[index] = { root, mixer, actions, current: idleAction };
+    }
+
+    const residentCount = residentRigs.filter((rig) => rig !== null).length;
+    peopleBodies.visible = residentCount < peopleCount;
+    peopleHeads.visible = residentCount < peopleCount;
+    updateSceneTriangleCount();
+    if (status) {
+      status.textContent = residentCount === peopleCount
+        ? "Residents ready · " + residentCount + " animated smallfolk"
+        : "Residents ready · " + residentCount + "/" + peopleCount + " models · capsule fallbacks active";
+      status.classList.add("complete");
+    }
+  }
+  void loadResidentModels();
 
   // Dust positions are allocated once and gently moved in place.
   const dustCount = 110;
@@ -1008,12 +1117,10 @@ function createDeskScene(
   let previousY = 0;
   let objectOffsetX = 0;
   let objectOffsetZ = 0;
-  let smoothMoveIndex = -1;
   let smoothX = 0;
   let smoothZ = 0;
   let targetX = 0;
   let targetZ = 0;
-  let lastDragSyncTime = performance.now();
   let clickAction: string | null = null;
   let pointerPressX = 0;
   let pointerPressY = 0;
@@ -1051,6 +1158,7 @@ function createDeskScene(
     if (index < 0 || !pointerDeskPosition()) return;
     targetX = THREE.MathUtils.clamp(pointerWorld.x + 5 + objectOffsetX, 0.08, 9.92);
     targetZ = THREE.MathUtils.clamp(pointerWorld.z + 5 + objectOffsetZ, 0.08, 9.92);
+    simulation.setGrabTarget(index, targetX, targetZ);
   }
 
   function carveSurfaceHit(): { point: THREE.Vector3; garden: boolean } | null {
@@ -1096,9 +1204,10 @@ function createDeskScene(
   }
 
   function beginCombinedGesture(): void {
+    if (dragIndex >= 0) simulation.releaseGrab(dragIndex);
+    if (heldIndex >= 0) simulation.releaseGrab(heldIndex);
     dragIndex = -1;
     heldIndex = -1;
-    smoothMoveIndex = -1;
     clickAction = null;
     const hit = rootHit();
     if (hit) {
@@ -1240,7 +1349,6 @@ function createDeskScene(
         dragIndex = Number(objectIndex);
         renderer.domElement.style.cursor = "grabbing";
         const index = dragIndex;
-        smoothMoveIndex = index;
         smoothX = simulation.objectX(index);
         smoothZ = simulation.objectZ(index);
         targetX = smoothX;
@@ -1249,31 +1357,33 @@ function createDeskScene(
           objectOffsetX = smoothX - (pointerWorld.x + 5);
           objectOffsetZ = smoothZ - (pointerWorld.z + 5);
         }
-        onInteraction("Moving " + simulation.objectName(index) + ". Release to place it.");
+        simulation.beginGrab(index, targetX, targetZ);
+        onInteraction("Moving " + simulation.objectName(index) + " · weight and momentum active.");
       }
       return;
     }
     if (event.button === 2) {
       if (heldIndex >= 0) {
         const name = simulation.objectName(heldIndex);
+        simulation.releaseGrab(heldIndex);
         heldIndex = -1;
-        onInteraction("Placed " + name + ".");
+            onInteraction("Placed " + name + " · it keeps its momentum.");
         return;
       }
       const hit = rootHit();
       if (!hit || hit.root.userData.objectIndex === undefined) return;
       heldIndex = Number(hit.root.userData.objectIndex);
-      smoothMoveIndex = heldIndex;
       smoothX = simulation.objectX(heldIndex);
       smoothZ = simulation.objectZ(heldIndex);
       targetX = smoothX;
       targetZ = smoothZ;
+      simulation.beginGrab(heldIndex, targetX, targetZ);
       renderer.domElement.style.cursor = "grabbing";
       if (pointerDeskPosition()) {
         objectOffsetX = smoothX - (pointerWorld.x + 5);
         objectOffsetZ = smoothZ - (pointerWorld.z + 5);
       }
-      onInteraction("Picked up " + simulation.objectName(heldIndex) + ". Right-click again to put it down.");
+      onInteraction("Picked up " + simulation.objectName(heldIndex) + " · it has weight and momentum. Right-click to release it.");
     }
   });
 
@@ -1290,9 +1400,12 @@ function createDeskScene(
         }
       }
       clickAction = null;
-      if (dragIndex >= 0 && !activateSceneItem) onInteraction("Placed " + simulation.objectName(dragIndex) + ".");
+      if (dragIndex >= 0) {
+        simulation.releaseGrab(dragIndex);
+        if (!activateSceneItem) onInteraction("Placed " + simulation.objectName(dragIndex) + " · it keeps its momentum.");
+      }
       dragIndex = -1;
-      if (heldIndex < 0) renderer.domElement.style.cursor = "default";
+        if (heldIndex < 0) renderer.domElement.style.cursor = "default";
     }
     if (event.button === 1) cameraDragging = false;
     if ((event.buttons & 3) !== 3) {
@@ -1301,7 +1414,10 @@ function createDeskScene(
     }
   });
   renderer.domElement.addEventListener("pointercancel", () => {
+    if (dragIndex >= 0) simulation.releaseGrab(dragIndex);
+    if (heldIndex >= 0) simulation.releaseGrab(heldIndex);
     dragIndex = -1;
+    heldIndex = -1;
     clickAction = null;
     cameraDragging = false;
     combinedMode = null;
@@ -1357,21 +1473,7 @@ function createDeskScene(
   return {
     sync(): void {
       if (memory.buffer !== boundBuffer) bindWasmViews();
-      const dragNow = performance.now();
-      const dragDelta = Math.min(0.05, Math.max(0, (dragNow - lastDragSyncTime) / 1000));
-      lastDragSyncTime = dragNow;
-      if (smoothMoveIndex >= 0) {
-        const blend = 1 - Math.exp(-20 * dragDelta);
-        smoothX += (targetX - smoothX) * blend;
-        smoothZ += (targetZ - smoothZ) * blend;
-        const settled = Math.abs(targetX - smoothX) + Math.abs(targetZ - smoothZ) < 0.002;
-        if (settled) {
-          smoothX = targetX;
-          smoothZ = targetZ;
-        }
-        simulation.moveObject(smoothMoveIndex, smoothX, smoothZ);
-        if (settled && dragIndex < 0 && heldIndex < 0) smoothMoveIndex = -1;
-      }
+      // Rust's spring grab solver now supplies the physical lag and momentum.
       const terrainPosition = terrainGeometry.getAttribute("position") as THREE.BufferAttribute;
       const terrainNormal = terrainGeometry.getAttribute("normal") as THREE.BufferAttribute;
       const waterPosition = waterGeometry.getAttribute("position") as THREE.BufferAttribute;
@@ -1427,21 +1529,37 @@ function createDeskScene(
       const step = Math.max(0, peopleTime - lastPeopleTime);
       lastPeopleTime = peopleTime;
       for (let index = 0; index < peopleCount; index += 1) {
-        const offset = index * 5;
+        const offset = index * 7;
         const x = peopleView[offset] ?? 0;
         const z = peopleView[offset + 1] ?? 0;
         const heading = peopleView[offset + 2] ?? 0;
         const wet = peopleView[offset + 3] ?? 0;
-        const seated = (peopleView[offset + 4] ?? 0) > 0.5;
-        const bounce = seated ? 0 : Math.sin(peopleTime * 5 + index * 1.7) * 0.018;
-        const bodyY = seated ? TAVERN_SURFACE_Y + 1.8 * PACK_SCALE + 0.135 : 0.431 + 0.135;
+        const activity = Math.round(peopleView[offset + 4] ?? 0);
+        const speed = peopleView[offset + 5] ?? 0;
+        const rig = residentRigs[index];
+
+        if (rig) {
+          rig.root.position.set(x - 5, 0.431, z - 5);
+          rig.root.rotation.y = heading - Math.PI / 2;
+          const motion = activity === 1 && speed > 0.02
+            ? "walk"
+            : activity === 2 || activity === 3
+              ? "work"
+              : activity === 4 ? "sit" : "idle";
+          setResidentMotion(rig, motion);
+          rig.mixer.update(step);
+        }
+
+        const fallbackVisible = rig === null;
+        const bounce = activity === 1 ? Math.sin(peopleTime * 5 + index * 1.7) * 0.018 : 0;
+        const bodyY = activity === 4 ? TAVERN_SURFACE_Y + 1.8 * PACK_SCALE + 0.135 : 0.431 + 0.135;
         dummy.position.set(x - 5, bodyY + bounce, z - 5);
         dummy.rotation.set(0, -heading, 0);
-        dummy.scale.set(1, 1, 1);
+        dummy.scale.set(fallbackVisible ? 1 : 0, fallbackVisible ? 1 : 0, fallbackVisible ? 1 : 0);
         dummy.updateMatrix();
         peopleBodies.setMatrixAt(index, dummy.matrix);
         dummy.position.set(x - 5 + Math.cos(heading) * 0.018, bodyY + 0.205 + bounce, z - 5 + Math.sin(heading) * 0.018);
-        dummy.scale.setScalar(0.82);
+        dummy.scale.setScalar(fallbackVisible ? 0.82 : 0);
         dummy.updateMatrix();
         peopleHeads.setMatrixAt(index, dummy.matrix);
         if (wet > 0.1) peopleBodies.setColorAt(index, wetBodyColor);
@@ -1450,6 +1568,30 @@ function createDeskScene(
       peopleBodies.instanceMatrix.needsUpdate = true;
       peopleHeads.instanceMatrix.needsUpdate = true;
       if (peopleBodies.instanceColor) peopleBodies.instanceColor.needsUpdate = true;
+
+      if (gardenSoilMesh && gardenObjectIndex >= 0) {
+        const soilPosition = gardenSoilMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+        let soilChanged = false;
+        const gardenX = simulation.objectX(gardenObjectIndex);
+        const gardenZ = simulation.objectZ(gardenObjectIndex);
+        for (let vertex = 0; vertex < soilPosition.count; vertex += 1) {
+          const worldX = gardenX + soilPosition.getX(vertex);
+          const worldZ = gardenZ + soilPosition.getZ(vertex);
+          const gridX = THREE.MathUtils.clamp(Math.round(worldX / DESK_SIZE * (GRID - 1)), 0, GRID - 1);
+          const gridZ = THREE.MathUtils.clamp(Math.round(worldZ / DESK_SIZE * (GRID - 1)), 0, GRID - 1);
+          const height = heightView[gridZ * GRID + gridX] ?? 0;
+          if (!Number.isFinite(gardenSoilLastHeights[vertex]) ||
+              Math.abs(gardenSoilLastHeights[vertex]! - height) > 0.00005) {
+            gardenSoilLastHeights[vertex] = height;
+            soilPosition.setY(vertex, height);
+            soilChanged = true;
+          }
+        }
+        if (soilChanged) {
+          soilPosition.needsUpdate = true;
+          gardenSoilMesh.geometry.computeVertexNormals();
+        }
+      }
 
       if (!lowGraphics) {
         for (let index = 0; index < dustCount; index += 1) {

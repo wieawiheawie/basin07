@@ -10,6 +10,7 @@ use water::{CELL_SIZE, DESK_SIZE, FlowBuffers, GRID_CELLS, GRID_SIZE};
 
 const FIXED_STEP: f32 = 1.0 / 60.0;
 const OBJECT_MATRIX_STRIDE: usize = 16;
+const PERSON_STRIDE: usize = 7;
 const INITIAL_BOTTLE_VOLUME: f32 = 0.14;
 const INITIAL_BARREL_VOLUME: f32 = 0.75;
 const ACTION_IDS: [&str; 12] = [
@@ -60,35 +61,92 @@ struct WorldObject {
     colour_index: u8,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum ResidentTask {
+    Wander,
+    DigGarden,
+    WaterGarden,
+    Eat,
+    Rest,
+}
+
+#[derive(Clone, Copy)]
 struct Person {
     x: f32,
     z: f32,
     heading: f32,
     wetness: f32,
-    wander_timer: f32,
     seed: u32,
     target_x: f32,
     target_z: f32,
-    seat_target: bool,
-    at_tavern: bool,
-    seated: bool,
+    target_object: usize,
+    task: ResidentTask,
+    task_timer: f32,
+    action_timer: f32,
+    decision_timer: f32,
+    hunger: f32,
+    fatigue: f32,
+    diligence: f32,
+    curiosity: f32,
+    activity: u8,
+    speed: f32,
 }
 
 #[derive(Clone, Copy)]
 struct RigidBody {
     vx: f32,
     vz: f32,
+    angular_velocity: f32,
     mass: f32,
     friction: f32,
     restitution: f32,
+    radius: f32,
+    grabbed: bool,
+    grab_x: f32,
+    grab_z: f32,
 }
 
 impl RigidBody {
+    fn new(mass: f32, friction: f32, restitution: f32, radius: f32) -> Self {
+        Self {
+            vx: 0.0,
+            vz: 0.0,
+            angular_velocity: 0.0,
+            mass,
+            friction,
+            restitution,
+            radius,
+            grabbed: false,
+            grab_x: 0.0,
+            grab_z: 0.0,
+        }
+    }
+
     fn for_object(kind: ObjectKind) -> Self {
-        if kind == ObjectKind::Pencil {
-            Self { vx: 0.0, vz: 0.0, mass: 0.008, friction: 0.72, restitution: 0.48 }
+        match kind {
+            ObjectKind::Pencil => Self::new(0.035, 0.95, 0.28, 0.065),
+            ObjectKind::Bottle => Self::new(0.16, 1.8, 0.16, 0.115),
+            ObjectKind::Book => Self::new(0.42, 2.4, 0.08, 0.19),
+            ObjectKind::Garden | ObjectKind::PlankFloor => Self::new(f32::INFINITY, 1.0, 0.0, 0.0),
+            ObjectKind::Table => Self::new(5.5, 3.5, 0.04, 0.0),
+            ObjectKind::Stool => Self::new(0.95, 2.5, 0.08, 0.17),
+            ObjectKind::Tankard => Self::new(0.24, 1.7, 0.14, 0.09),
+            ObjectKind::Mug => Self::new(0.14, 1.8, 0.12, 0.075),
+            ObjectKind::BreadBasket => Self::new(0.22, 2.2, 0.06, 0.14),
+            ObjectKind::CheeseWheel => Self::new(0.28, 1.8, 0.08, 0.13),
+            ObjectKind::Barrel => Self::new(1.8, 2.0, 0.10, 0.22),
+            ObjectKind::Crate => Self::new(0.9, 2.6, 0.06, 0.20),
+            ObjectKind::Sack => Self::new(0.38, 2.4, 0.05, 0.16),
+            ObjectKind::Candle => Self::new(0.055, 1.7, 0.05, 0.045),
+            ObjectKind::Lantern => Self::new(0.48, 1.9, 0.10, 0.13),
+        }
+    }
+
+    fn inverse_mass(&self) -> f32 {
+        if self.mass.is_finite() && self.mass > 0.0 {
+            1.0 / self.mass
         } else {
-            Self { vx: 0.0, vz: 0.0, mass: f32::INFINITY, friction: 1.0, restitution: 0.0 }
+            0.0
         }
     }
 }
@@ -192,11 +250,11 @@ impl Simulation {
         ];
 
         let people = vec![
-            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, wander_timer: 0.2, seed: 11, target_x: 7.6, target_z: 6.95, seat_target: true, at_tavern: false, seated: false },
-            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, wander_timer: 0.5, seed: 23, target_x: 6.65, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
-            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, wander_timer: 0.8, seed: 37, target_x: 8.55, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
-            Person { x: 5.1, z: 5.8, heading: -1.4, wetness: 0.0, wander_timer: 0.1, seed: 47, target_x: 6.45, target_z: 8.75, seat_target: false, at_tavern: false, seated: false },
-            Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59, target_x: 8.9, target_z: 8.45, seat_target: false, at_tavern: false, seated: false },
+            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, seed: 11, target_x: 5.0, target_z: 5.0, target_object: 0, task: ResidentTask::Wander, task_timer: 0.0, action_timer: 0.0, decision_timer: 0.15, hunger: 18.0, fatigue: 22.0, diligence: 0.88, curiosity: 0.44, activity: 0, speed: 0.0 },
+            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, seed: 23, target_x: 5.0, target_z: 5.0, target_object: 0, task: ResidentTask::Wander, task_timer: 0.0, action_timer: 0.0, decision_timer: 0.8, hunger: 26.0, fatigue: 18.0, diligence: 0.55, curiosity: 0.86, activity: 0, speed: 0.0 },
+            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, seed: 37, target_x: 5.0, target_z: 5.0, target_object: 0, task: ResidentTask::Wander, task_timer: 0.0, action_timer: 0.0, decision_timer: 1.4, hunger: 12.0, fatigue: 34.0, diligence: 0.72, curiosity: 0.70, activity: 0, speed: 0.0 },
+            Person { x: 5.1, z: 5.8, heading: -1.4, wetness: 0.0, seed: 47, target_x: 5.0, target_z: 5.0, target_object: 0, task: ResidentTask::Wander, task_timer: 0.0, action_timer: 0.0, decision_timer: 1.9, hunger: 31.0, fatigue: 16.0, diligence: 0.42, curiosity: 0.92, activity: 0, speed: 0.0 },
+            Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, seed: 59, target_x: 5.0, target_z: 5.0, target_object: 0, task: ResidentTask::Wander, task_timer: 0.0, action_timer: 0.0, decision_timer: 2.3, hunger: 20.0, fatigue: 27.0, diligence: 0.76, curiosity: 0.55, activity: 0, speed: 0.0 },
         ];
 
         let object_transforms = vec![0.0; objects.len() * OBJECT_MATRIX_STRIDE];
@@ -211,7 +269,7 @@ impl Simulation {
             terrain_normals: vec![0.0; GRID_CELLS * 3],
             water_positions: vec![0.0; GRID_CELLS * 3],
             water_normals: vec![0.0; GRID_CELLS * 3],
-            people_buffer: vec![0.0; people.len() * 5],
+            people_buffer: vec![0.0; people.len() * PERSON_STRIDE],
             objects,
             object_transforms,
             object_colours,
@@ -276,6 +334,51 @@ impl Simulation {
             body.vx = 0.0;
             body.vz = 0.0;
         }
+        true
+    }
+
+    #[wasm_bindgen(js_name = beginGrab)]
+    pub fn begin_grab(&mut self, index: usize, x: f32, z: f32) -> bool {
+        if !x.is_finite() || !z.is_finite() {
+            return false;
+        }
+        let Some(body) = self.bodies.get_mut(index) else {
+            return false;
+        };
+        if !body.mass.is_finite() {
+            return false;
+        }
+        body.grabbed = true;
+        body.grab_x = x.clamp(0.08, 9.92);
+        body.grab_z = z.clamp(0.08, 9.92);
+        true
+    }
+
+    #[wasm_bindgen(js_name = setGrabTarget)]
+    pub fn set_grab_target(&mut self, index: usize, x: f32, z: f32) -> bool {
+        if !x.is_finite() || !z.is_finite() {
+            return false;
+        }
+        let Some(body) = self.bodies.get_mut(index) else {
+            return false;
+        };
+        if !body.grabbed {
+            return false;
+        }
+        body.grab_x = x.clamp(0.08, 9.92);
+        body.grab_z = z.clamp(0.08, 9.92);
+        true
+    }
+
+    #[wasm_bindgen(js_name = releaseGrab)]
+    pub fn release_grab(&mut self, index: usize) -> bool {
+        let Some(body) = self.bodies.get_mut(index) else {
+            return false;
+        };
+        if !body.grabbed {
+            return false;
+        }
+        body.grabbed = false;
         true
     }
 
@@ -512,14 +615,15 @@ impl Simulation {
             let (objects, water) = (&mut self.objects, &mut self.water);
             for object in objects.iter_mut().filter(|object| object.kind == ObjectKind::Bottle) {
                 let difference = object.target_tilt - object.tilt;
-                object.tilt += difference.clamp(-dt * 0.65, dt * 0.65);
+                object.tilt += difference.clamp(-dt * 1.15, dt * 1.15);
 
-                if !object.cap_on && object.tilt > 0.20 && object.volume > 0.0 {
-                    let tilt_ratio = (object.tilt / std::f32::consts::FRAC_PI_2).clamp(0.0, 1.0);
+                if !object.cap_on && object.tilt.abs() > 0.20 && object.volume > 0.0 {
+                    let tilt_ratio = (object.tilt.abs() / std::f32::consts::FRAC_PI_2).clamp(0.0, 1.0);
                     let amount = (0.045 * tilt_ratio * tilt_ratio * dt).min(object.volume);
                     object.volume = (object.volume - amount).max(0.0);
-                    let pour_x = object.x + object.yaw.cos() * 0.58;
-                    let pour_z = object.z + object.yaw.sin() * 0.58;
+                    let pour_direction = object.yaw + if object.tilt < 0.0 { std::f32::consts::PI } else { 0.0 };
+                    let pour_x = object.x + pour_direction.cos() * 0.58;
+                    let pour_z = object.z + pour_direction.sin() * 0.58;
                     add_water_volume(water, pour_x, pour_z, amount);
                 }
             }
@@ -914,7 +1018,8 @@ impl Simulation {
 
     fn update_rigid_bodies(&mut self, dt: f32) {
         for index in 0..self.objects.len() {
-            if self.objects[index].kind != ObjectKind::Pencil {
+            let inverse_mass = self.bodies[index].inverse_mass();
+            if inverse_mass <= 0.0 {
                 continue;
             }
 
@@ -926,13 +1031,25 @@ impl Simulation {
             let slope_x = (self.height[cell + 1] - self.height[cell - 1]) / (2.0 * CELL_SIZE);
             let slope_z = (self.height[cell + GRID_SIZE] - self.height[cell - GRID_SIZE]) / (2.0 * CELL_SIZE);
             let (water_vx, water_vz) = self.flow.velocity_at(x, z);
-
+            let object = &mut self.objects[index];
             let body = &mut self.bodies[index];
-            body.vx += (-slope_x * 0.55 + water_vx * 1.35) * dt;
-            body.vz += (-slope_z * 0.55 + water_vz * 1.35) * dt;
-            let damping = (1.0 - body.friction * dt).clamp(0.0, 1.0);
+
+            if body.grabbed {
+                // The pointer acts as a spring target. Heavy bodies lag behind and retain
+                // momentum, while light objects follow quickly.
+                let force_x = (body.grab_x - object.x) * 34.0 - body.vx * 10.5;
+                let force_z = (body.grab_z - object.z) * 34.0 - body.vz * 10.5;
+                body.vx += (force_x * inverse_mass).clamp(-22.0, 22.0) * dt;
+                body.vz += (force_z * inverse_mass).clamp(-22.0, 22.0) * dt;
+            } else {
+                body.vx += (-slope_x * 0.55 + water_vx * 1.35) * dt;
+                body.vz += (-slope_z * 0.55 + water_vz * 1.35) * dt;
+            }
+
+            let damping = (-body.friction * dt).exp();
             body.vx *= damping;
             body.vz *= damping;
+            body.angular_velocity *= (-4.2 * dt).exp();
 
             let speed = (body.vx * body.vx + body.vz * body.vz).sqrt();
             if speed > 3.5 {
@@ -941,57 +1058,366 @@ impl Simulation {
                 body.vz *= scale;
             }
 
-            self.objects[index].x += body.vx * dt;
-            self.objects[index].z += body.vz * dt;
-            if self.objects[index].x < 0.12 {
-                self.objects[index].x = 0.12;
+            object.x += body.vx * dt;
+            object.z += body.vz * dt;
+            object.yaw += body.angular_velocity * dt;
+            let boundary = body.radius.max(0.08);
+            if object.x < boundary {
+                object.x = boundary;
                 body.vx = body.vx.abs() * body.restitution;
-            } else if self.objects[index].x > 9.88 {
-                self.objects[index].x = 9.88;
+            } else if object.x > 10.0 - boundary {
+                object.x = 10.0 - boundary;
                 body.vx = -body.vx.abs() * body.restitution;
             }
-            if self.objects[index].z < 0.12 {
-                self.objects[index].z = 0.12;
+            if object.z < boundary {
+                object.z = boundary;
                 body.vz = body.vz.abs() * body.restitution;
-            } else if self.objects[index].z > 9.88 {
-                self.objects[index].z = 9.88;
+            } else if object.z > 10.0 - boundary {
+                object.z = 10.0 - boundary;
                 body.vz = -body.vz.abs() * body.restitution;
-            }
-            if body.vx.abs() + body.vz.abs() > 0.025 {
-                self.objects[index].yaw = body.vz.atan2(body.vx);
             }
         }
 
-        // The four small pencil bodies only need a compact circle-collision pass.
+        // Circle contacts with inverse-mass weighted resolution and Coulomb-like friction.
         for a in 0..self.objects.len() {
-            if self.objects[a].kind != ObjectKind::Pencil { continue; }
+            let radius_a = self.bodies[a].radius;
+            if radius_a <= 0.0 { continue; }
             for b in (a + 1)..self.objects.len() {
-                if self.objects[b].kind != ObjectKind::Pencil { continue; }
+                let radius_b = self.bodies[b].radius;
+                if radius_b <= 0.0 { continue; }
+                let inverse_a = self.bodies[a].inverse_mass();
+                let inverse_b = self.bodies[b].inverse_mass();
+                let inverse_sum = inverse_a + inverse_b;
+                if inverse_sum <= 0.0 { continue; }
+
                 let dx = self.objects[b].x - self.objects[a].x;
                 let dz = self.objects[b].z - self.objects[a].z;
                 let distance_sq = dx * dx + dz * dz;
-                let min_distance = 0.19;
-                if distance_sq >= min_distance * min_distance { continue; }
+                let minimum = radius_a + radius_b;
+                if distance_sq >= minimum * minimum { continue; }
                 let distance = distance_sq.sqrt().max(0.0001);
                 let nx = dx / distance;
                 let nz = dz / distance;
-                let relative = (self.bodies[b].vx - self.bodies[a].vx) * nx
-                    + (self.bodies[b].vz - self.bodies[a].vz) * nz;
-                let inverse_a = 1.0 / self.bodies[a].mass;
-                let inverse_b = 1.0 / self.bodies[b].mass;
-                if relative < 0.0 {
+                let relative_x = self.bodies[b].vx - self.bodies[a].vx;
+                let relative_z = self.bodies[b].vz - self.bodies[a].vz;
+                let normal_speed = relative_x * nx + relative_z * nz;
+                let mut normal_impulse = 0.0;
+
+                if normal_speed < 0.0 {
                     let restitution = self.bodies[a].restitution.min(self.bodies[b].restitution);
-                    let impulse = -(1.0 + restitution) * relative / (inverse_a + inverse_b);
-                    self.bodies[a].vx -= impulse * inverse_a * nx;
-                    self.bodies[a].vz -= impulse * inverse_a * nz;
-                    self.bodies[b].vx += impulse * inverse_b * nx;
-                    self.bodies[b].vz += impulse * inverse_b * nz;
+                    normal_impulse = -(1.0 + restitution) * normal_speed / inverse_sum;
+                    self.bodies[a].vx -= normal_impulse * inverse_a * nx;
+                    self.bodies[a].vz -= normal_impulse * inverse_a * nz;
+                    self.bodies[b].vx += normal_impulse * inverse_b * nx;
+                    self.bodies[b].vz += normal_impulse * inverse_b * nz;
+
+                    let tangent_x = relative_x - normal_speed * nx;
+                    let tangent_z = relative_z - normal_speed * nz;
+                    let tangent_length = (tangent_x * tangent_x + tangent_z * tangent_z).sqrt();
+                    if tangent_length > 0.0001 {
+                        let tx = tangent_x / tangent_length;
+                        let tz = tangent_z / tangent_length;
+                        let friction_impulse = (-tangent_length / inverse_sum)
+                            .clamp(-normal_impulse * 0.42, normal_impulse * 0.42);
+                        self.bodies[a].vx -= friction_impulse * inverse_a * tx;
+                        self.bodies[a].vz -= friction_impulse * inverse_a * tz;
+                        self.bodies[b].vx += friction_impulse * inverse_b * tx;
+                        self.bodies[b].vz += friction_impulse * inverse_b * tz;
+                        self.bodies[a].angular_velocity -= friction_impulse * radius_a / self.bodies[a].mass;
+                        self.bodies[b].angular_velocity += friction_impulse * radius_b / self.bodies[b].mass;
+                    }
                 }
-                let overlap = min_distance - distance;
-                self.objects[a].x -= nx * overlap * 0.5;
-                self.objects[a].z -= nz * overlap * 0.5;
-                self.objects[b].x += nx * overlap * 0.5;
-                self.objects[b].z += nz * overlap * 0.5;
+
+                let overlap = minimum - distance;
+                let correction = (overlap * 0.72 / inverse_sum).min(0.18);
+                self.objects[a].x -= nx * correction * inverse_a;
+                self.objects[a].z -= nz * correction * inverse_a;
+                self.objects[b].x += nx * correction * inverse_b;
+                self.objects[b].z += nz * correction * inverse_b;
+
+                if normal_impulse > 0.05 {
+                    let hit_tilt = if nz.abs() > 0.24 { nz.signum() } else if nx >= 0.0 { 1.0 } else { -1.0 };
+                    if self.objects[a].kind == ObjectKind::Bottle && !self.objects[a].cap_on {
+                        self.objects[a].target_tilt = hit_tilt * std::f32::consts::FRAC_PI_2;
+                    }
+                    if self.objects[b].kind == ObjectKind::Bottle && !self.objects[b].cap_on {
+                        self.objects[b].target_tilt = -hit_tilt * std::f32::consts::FRAC_PI_2;
+                    }
+                }
+            }
+        }
+    }
+
+    fn garden_moisture_percent(&self) -> f32 {
+        let Some(garden) = self.objects.iter().find(|object| object.kind == ObjectKind::Garden) else {
+            return 0.0;
+        };
+        let gx = (garden.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
+        let gz = (garden.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
+        let mut total = 0.0;
+        let mut count = 0.0;
+        for dz in -4..=4 {
+            for dx in -4..=4 {
+                let x = gx + dx;
+                let z = gz + dz;
+                if x >= 0 && z >= 0 && x < GRID_SIZE as isize && z < GRID_SIZE as isize {
+                    total += self.water[z as usize * GRID_SIZE + x as usize];
+                    count += 1.0;
+                }
+            }
+        }
+        if count > 0.0 {
+            (total / count / 0.12 * 100.0).clamp(0.0, 100.0)
+        } else {
+            0.0
+        }
+    }
+
+    fn water_source_near(&self, x: f32, z: f32) -> Option<usize> {
+        self.objects.iter().enumerate()
+            .filter(|(_, object)| object.kind == ObjectKind::Bottle && object.volume > 0.002)
+            .min_by(|(_, a), (_, b)| {
+                let da = (a.x - x).powi(2) + (a.z - z).powi(2);
+                let db = (b.x - x).powi(2) + (b.z - z).powi(2);
+                da.total_cmp(&db)
+            })
+            .map(|(index, _)| index)
+    }
+
+    fn choose_person_task(&mut self, index: usize) {
+        let person = self.people[index];
+        let moisture = self.garden_moisture_percent();
+        let water_source = self.water_source_near(5.0, 5.0);
+        let watering_workers = self.people.iter()
+            .filter(|other| other.task == ResidentTask::WaterGarden)
+            .count() as f32;
+        let food_index = self.objects.iter().position(|object| {
+            matches!(object.kind, ObjectKind::BreadBasket | ObjectKind::CheeseWheel)
+        }).unwrap_or(0);
+        let rest_index = self.objects.iter().position(|object| object.kind == ObjectKind::Stool)
+            .unwrap_or(0);
+
+        let water_score = if water_source.is_some() && moisture < 54.0 {
+            0.56 + (54.0 - moisture) * 0.008 + person.diligence * 0.18 - watering_workers * 0.24
+        } else { 0.0 };
+        let dig_score = if moisture < 78.0 {
+            0.26 + (78.0 - moisture) * 0.006 + person.curiosity * 0.24
+        } else { 0.12 + person.curiosity * 0.10 };
+        let eat_score = (person.hunger - 28.0).max(0.0) * 0.014 + person.curiosity * 0.02;
+        let rest_score = (person.fatigue - 34.0).max(0.0) * 0.014;
+        let wander_score = 0.19 + person.curiosity * 0.08;
+
+        let mut best = (wander_score, ResidentTask::Wander);
+        for candidate in [
+            (water_score, ResidentTask::WaterGarden),
+            (dig_score, ResidentTask::DigGarden),
+            (eat_score, ResidentTask::Eat),
+            (rest_score, ResidentTask::Rest),
+        ] {
+            if candidate.0 > best.0 { best = candidate; }
+        }
+
+        let person = &mut self.people[index];
+        person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        person.task = best.1;
+        person.action_timer = 0.0;
+        let jitter = (person.seed % 1000) as f32 / 1000.0;
+        person.task_timer = match person.task {
+            ResidentTask::WaterGarden => 9.0 + jitter * 3.0,
+            ResidentTask::DigGarden => 5.0 + jitter * 4.0,
+            ResidentTask::Eat => 3.0 + jitter * 1.5,
+            ResidentTask::Rest => 4.0 + jitter * 3.0,
+            ResidentTask::Wander => 2.0 + jitter * 2.0,
+        };
+
+        match person.task {
+            ResidentTask::WaterGarden => {
+                let target = water_source.unwrap_or(0);
+                person.target_object = target;
+                if let Some(object) = self.objects.get(target) {
+                    let dx = 5.0 - object.x;
+                    let dz = 5.0 - object.z;
+                    let distance = (dx * dx + dz * dz).sqrt().max(0.001);
+                    person.target_x = object.x - dx / distance * 0.28;
+                    person.target_z = object.z - dz / distance * 0.28;
+                }
+            }
+            ResidentTask::DigGarden => {
+                person.target_x = 4.65 + jitter * 0.70;
+                person.target_z = 4.65 + ((person.seed >> 8) % 1000) as f32 / 1000.0 * 0.70;
+                person.target_object = self.objects.iter().position(|object| object.kind == ObjectKind::Garden).unwrap_or(0);
+            }
+            ResidentTask::Eat => {
+                person.target_object = food_index;
+                person.target_x = self.objects[food_index].x;
+                person.target_z = self.objects[food_index].z;
+            }
+            ResidentTask::Rest => {
+                person.target_object = rest_index;
+                person.target_x = self.objects[rest_index].x;
+                person.target_z = self.objects[rest_index].z;
+            }
+            ResidentTask::Wander => {
+                person.target_x = 0.8 + jitter * 8.4;
+                person.target_z = 0.8 + ((person.seed >> 7) % 1000) as f32 / 1000.0 * 8.4;
+            }
+        }
+    }
+
+    fn update_people(&mut self, dt: f32) {
+        let moisture = self.garden_moisture_percent();
+        for index in 0..self.people.len() {
+            {
+                let person = &mut self.people[index];
+                person.hunger = (person.hunger + dt * 0.52).min(100.0);
+                person.fatigue = (person.fatigue + dt * 0.34).min(100.0);
+                person.wetness = (person.wetness - dt * 0.18).max(0.0);
+                person.decision_timer -= dt;
+                person.task_timer -= dt;
+                person.action_timer = (person.action_timer - dt).max(0.0);
+            }
+
+            let current_task = self.people[index].task;
+            let task_object = self.people[index].target_object;
+            let task_finished = self.people[index].task_timer <= 0.0
+                || (current_task == ResidentTask::WaterGarden && moisture > 56.0)
+                || (current_task == ResidentTask::Eat && self.people[index].hunger < 18.0)
+                || (current_task == ResidentTask::Rest && self.people[index].fatigue < 14.0)
+                || (current_task == ResidentTask::WaterGarden
+                    && self.objects.get(task_object).is_none_or(|object| object.volume <= 0.001));
+            if task_finished || (current_task == ResidentTask::Wander && self.people[index].decision_timer <= 0.0) {
+                self.choose_person_task(index);
+                self.people[index].decision_timer = 2.4;
+            }
+
+            let task = self.people[index].task;
+            if task == ResidentTask::WaterGarden {
+                if let Some(bottle) = self.objects.get(task_object) {
+                    let dx = 5.0 - bottle.x;
+                    let dz = 5.0 - bottle.z;
+                    let distance = (dx * dx + dz * dz).sqrt().max(0.001);
+                    let person = &mut self.people[index];
+                    person.target_x = bottle.x - dx / distance * 0.28;
+                    person.target_z = bottle.z - dz / distance * 0.28;
+                }
+            }
+
+            let target_x = self.people[index].target_x;
+            let target_z = self.people[index].target_z;
+            let dx = target_x - self.people[index].x;
+            let dz = target_z - self.people[index].z;
+            let distance = (dx * dx + dz * dz).sqrt();
+            if distance > 0.13 {
+                let speed = match task {
+                    ResidentTask::WaterGarden => 0.44,
+                    ResidentTask::DigGarden => 0.34,
+                    ResidentTask::Eat => 0.36,
+                    ResidentTask::Rest => 0.32,
+                    ResidentTask::Wander => 0.26,
+                };
+                let travel = (speed * dt).min(distance);
+                let dir_x = dx / distance;
+                let dir_z = dz / distance;
+                let person = &mut self.people[index];
+                person.heading = dir_z.atan2(dir_x);
+                person.x = (person.x + dir_x * travel).clamp(0.12, 9.88);
+                person.z = (person.z + dir_z * travel).clamp(0.12, 9.88);
+                person.activity = 1;
+                person.speed = speed;
+
+                // Residents physically bump light props as they walk past them.
+                for object_index in 0..self.objects.len() {
+                    let radius = self.bodies[object_index].radius;
+                    if radius <= 0.0 || self.bodies[object_index].inverse_mass() <= 0.0 { continue; }
+                    let ox = self.objects[object_index].x - person.x;
+                    let oz = self.objects[object_index].z - person.z;
+                    let d2 = ox * ox + oz * oz;
+                    let min_d = radius + 0.12;
+                    if d2 >= min_d * min_d { continue; }
+                    let normal_len = d2.sqrt().max(0.001);
+                    let nx = ox / normal_len;
+                    let nz = oz / normal_len;
+                    let impulse = 0.035;
+                    self.bodies[object_index].vx += nx * impulse / self.bodies[object_index].mass;
+                    self.bodies[object_index].vz += nz * impulse / self.bodies[object_index].mass;
+                    self.bodies[object_index].angular_velocity += (dir_x * nz - dir_z * nx) * 0.35;
+                    if self.objects[object_index].kind == ObjectKind::Bottle
+                        && !self.objects[object_index].cap_on
+                        && self.bodies[object_index].vx.hypot(self.bodies[object_index].vz) > 0.18
+                    {
+                        self.objects[object_index].yaw = (5.0 - self.objects[object_index].z)
+                            .atan2(5.0 - self.objects[object_index].x);
+                        self.objects[object_index].target_tilt = std::f32::consts::FRAC_PI_2;
+                    }
+                }
+                continue;
+            }
+
+            match task {
+                ResidentTask::WaterGarden => {
+                    let bottle_index = task_object;
+                    if bottle_index < self.objects.len() {
+                        let garden_dx = 5.0 - self.objects[bottle_index].x;
+                        let garden_dz = 5.0 - self.objects[bottle_index].z;
+                        let garden_distance = (garden_dx * garden_dx + garden_dz * garden_dz).sqrt();
+                        let person = &mut self.people[index];
+                        person.heading = garden_dz.atan2(garden_dx);
+                        person.activity = 3;
+                        person.speed = 0.0;
+
+                        if person.action_timer <= 0.0 {
+                            if self.objects[bottle_index].cap_on {
+                                self.objects[bottle_index].cap_on = false;
+                                person.action_timer = 0.55;
+                            } else if garden_distance > 0.72 {
+                                self.objects[bottle_index].yaw = person.heading;
+                                self.objects[bottle_index].target_tilt = std::f32::consts::FRAC_PI_2;
+                                self.bodies[bottle_index].vx += garden_dx / garden_distance.max(0.001) * 0.92;
+                                self.bodies[bottle_index].vz += garden_dz / garden_distance.max(0.001) * 0.92;
+                                self.bodies[bottle_index].angular_velocity += 0.45;
+                                person.action_timer = 1.05;
+                            } else {
+                                self.objects[bottle_index].yaw = person.heading;
+                                self.objects[bottle_index].target_tilt = std::f32::consts::FRAC_PI_2;
+                                person.action_timer = 0.8;
+                            }
+                        }
+                    }
+                }
+                ResidentTask::DigGarden => {
+                    let person = &mut self.people[index];
+                    person.activity = 2;
+                    person.speed = 0.0;
+                    if person.action_timer <= 0.0 {
+                        person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                        let offset_x = ((person.seed >> 8) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
+                        let offset_z = ((person.seed >> 18) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
+                        let start_x = 5.0 + offset_x;
+                        let start_z = 5.0 + offset_z;
+                        let line_x = 0.16 + ((person.seed >> 4) % 1000) as f32 / 1000.0 * 0.24;
+                        self.carve_line((start_x - line_x, start_z), (start_x + line_x, start_z + 0.02), 0.004, 0.18);
+                        person.action_timer = 0.42;
+                        person.heading = 0.0;
+                    }
+                }
+                ResidentTask::Eat => {
+                    let person = &mut self.people[index];
+                    person.activity = 3;
+                    person.speed = 0.0;
+                    person.hunger = (person.hunger - dt * 9.0).max(0.0);
+                }
+                ResidentTask::Rest => {
+                    let person = &mut self.people[index];
+                    person.activity = 4;
+                    person.speed = 0.0;
+                    person.fatigue = (person.fatigue - dt * 12.0).max(0.0);
+                }
+                ResidentTask::Wander => {
+                    let person = &mut self.people[index];
+                    person.activity = 0;
+                    person.speed = 0.0;
+                    person.decision_timer = 0.0;
+                }
             }
         }
     }
@@ -1138,12 +1564,14 @@ impl Simulation {
 
     fn sync_people_buffer(&mut self) {
         for (index, person) in self.people.iter().enumerate() {
-            let base = index * 4;
+            let base = index * PERSON_STRIDE;
             self.people_buffer[base] = person.x;
             self.people_buffer[base + 1] = person.z;
             self.people_buffer[base + 2] = person.heading;
             self.people_buffer[base + 3] = person.wetness;
-            self.people_buffer[base + 4] = if person.seated { 1.0 } else { 0.0 };
+            self.people_buffer[base + 4] = person.activity as f32;
+            self.people_buffer[base + 5] = person.speed;
+            self.people_buffer[base + 6] = person.fatigue;
         }
     }
 
@@ -1507,6 +1935,49 @@ mod tests {
         simulation.cooldown = 0.0;
         simulation.process_queue();
         assert_eq!(simulation.objects[5].colour_index, 1);
+    }
+
+    #[test]
+    fn grabbed_objects_obey_mass_and_release_with_momentum() {
+        let mut simulation = ready_simulation();
+        let bottle = 0;
+        let pencil = 5;
+        assert!(simulation.begin_grab(bottle, 2.0, 7.3));
+        assert!(simulation.set_grab_target(bottle, 4.0, 7.3));
+        for _ in 0..30 { simulation.fixed_step(FIXED_STEP); }
+        assert!(simulation.objects[bottle].x > 2.1);
+        assert!(simulation.release_grab(bottle));
+        assert!(simulation.bodies[bottle].vx > 0.0);
+
+        assert!(simulation.begin_grab(pencil, 1.3, 4.3));
+        assert!(simulation.set_grab_target(pencil, 4.0, 4.3));
+        for _ in 0..30 { simulation.fixed_step(FIXED_STEP); }
+        assert!(simulation.objects[pencil].x > simulation.objects[bottle].x - 0.5);
+    }
+
+    #[test]
+    fn mixed_bodies_transfer_impulses_and_tip_uncapped_bottles() {
+        let mut simulation = ready_simulation();
+        simulation.objects[0].cap_on = false;
+        simulation.objects[0].x = 4.0;
+        simulation.objects[0].z = 4.0;
+        simulation.objects[5].x = 3.75;
+        simulation.objects[5].z = 4.0;
+        simulation.bodies[5].vx = 2.2;
+        for _ in 0..8 { simulation.update_rigid_bodies(FIXED_STEP); }
+        assert!(simulation.objects[0].target_tilt.abs() > 0.5);
+        assert!(simulation.bodies[0].vx.abs() > 0.01);
+    }
+
+    #[test]
+    fn residents_choose_work_and_act_on_the_world_state() {
+        let mut simulation = ready_simulation();
+        for _ in 0..900 { simulation.fixed_step(FIXED_STEP); }
+        assert!(simulation.people.iter().any(|person| person.task == ResidentTask::DigGarden
+            || person.task == ResidentTask::WaterGarden));
+        assert!(simulation.height.iter().any(|height| *height < -0.001)
+            || simulation.objects.iter().any(|object| object.kind == ObjectKind::Bottle && !object.cap_on));
+        assert!(simulation.people.iter().any(|person| person.activity == 2 || person.activity == 3));
     }
 
     #[test]
