@@ -381,9 +381,8 @@ pub fn sync_machines(
             0.65,
             tile_z(machine.pos.z as i32),
         );
-        let rotation = Quat::from_rotation_y(
-            f32::from(machine.rotation) * std::f32::consts::FRAC_PI_2,
-        );
+        let rotation =
+            Quat::from_rotation_y(f32::from(machine.rotation) * std::f32::consts::FRAC_PI_2);
 
         let Some(entity) = registry.machine_entities.get(&machine.id).copied() else {
             let entity = commands

@@ -26,7 +26,9 @@ The current code does **not yet** meet the final data-driven target: `catalog.rs
 | WebGPU-only | Modern API and feature set; good long-term path for large plants and more demanding visuals. | Browser/device coverage is not universal. Bevy documents WebGPU browser examples as desktop Chrome-only in its current support note. | Optional, separate build only. |
 | WebGL2 | Broadly available desktop browser fallback and sufficient for the first low-poly factory scene. | Lower feature/performance ceiling than WebGPU; no general compute-shader path for this simulation design. | **Default build.** Keep simulation on the CPU and use instancing for repeated geometry. |
 
-Bevy 0.20 was released on 8 October 2026; Bevy 0.20.1 is the package version pinned in `Cargo.toml`. The 0.20.1 package declares Rust 1.97.1 as its minimum supported version, now mirrored in this project's `rust-version`. Bevy's `webgpu` and `webgl2` Cargo features select different WASM backends: enabling WebGPU overrides the WebGL2 path. They are therefore two build artifacts, not a runtime backend switch inside one WASM binary. The compatibility-first WebGL2 build remains the primary deployment.\n\n**Build evidence and renderer decision (8 November 2026):** GitHub Actions run [#48](https://github.com/wieawiheawie/basin07/actions/runs/42438783108) passed the WASM check/build, `trunk build --release` and separate thin-LTO distribution build. The regular release WASM measured 30,131,532 bytes raw / 9,006,989 bytes gzip. This is not tiny, but the build completed and the scene uses shared meshes/materials with a low-graphics preset. Keep Bevy for the first playable slice; revisit only if the 7.8 GB Codespace build is OOM-killed or browser profiling shows unacceptable runtime overhead. The hosted-runner result does not prove the user's Codespace memory limit.
+Bevy 0.20 was released on 8 October 2026; Bevy 0.20.1 is the package version pinned in `Cargo.toml`. The 0.20.1 package declares Rust 1.97.1 as its minimum supported version, now mirrored in this project's `rust-version`. Bevy's `webgpu` and `webgl2` Cargo features select different WASM backends: enabling WebGPU overrides the WebGL2 path. They are therefore two build artifacts, not a runtime backend switch inside one WASM binary. The compatibility-first WebGL2 build remains the primary deployment.
+
+**Build evidence and renderer decision (8 November 2026):** GitHub Actions run [#48](https://github.com/wieawiheawie/basin07/actions/runs/42438783108) passed the WASM check/build, `trunk build --release` and separate thin-LTO distribution build. The regular release WASM measured 30,131,532 bytes raw / 9,006,989 bytes gzip. This is not tiny, but the build completed and the scene uses shared meshes/materials with a low-graphics preset. Keep Bevy for the first playable slice; revisit only if the 7.8 GB Codespace build is OOM-killed or browser profiling shows unacceptable runtime overhead. The hosted-runner result does not prove the user's Codespace memory limit.
 
 ## 3. Build profiles and commands
 
@@ -38,10 +40,10 @@ rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
 ```
 
-Run the web client in development mode:
+Run the memory-light release client in Codespaces:
 
 ```bash
-trunk serve --open
+trunk serve --release
 ```
 
 Build the default WebGL2 site:

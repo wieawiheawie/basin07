@@ -14,7 +14,7 @@
 - **Run #48 passed:** Python content/economy validator; Rust formatting; all 19 Rust unit tests; Rust headless validator; WASM `cargo check`; WASM release build; `trunk build --release`; and separate thin-LTO distribution packaging.
 - **WASM sizes from run #48:** pre-Trunk 90,295,893 bytes raw / 14,475,783 bytes gzip; regular release 30,131,532 / 9,006,989; dist build 30,446,751 / 9,015,782.
 - These are hosted-runner results, **not** proof of the user's 7.8 GB/no-swap Codespace limit. That environment and the actual browser runtime still need a smoke test.
-- CI is now scoped to content validation, formatting, Rust tests, headless validator and WASM `cargo check`; it no longer runs the long release build or Trunk packaging.
+- CI is now scoped to content validation, formatting, Rust tests, headless validator and WASM `cargo check`; it no longer runs the long release build or Trunk packaging. The first run on commit `081a8c12` stopped at a rustfmt-only layout difference in the rotation expression before the Rust tests; that formatting has now been corrected and the rerun is pending.
 - **Milestone 1 status:** scene/placement source and an earlier Trunk release artifact are verified. Final confirmation is pending `trunk serve --release` in the user's Codespace.
 
 ## Exact Codespace commands
