@@ -2,7 +2,7 @@
 
 ## Milestone 1 — initial implementation
 
-**Status: source committed; lightweight GitHub CI passed. Browser/WASM build still needs a Codespace check.**
+**Status: lightweight GitHub CI passed previously; WASM-target compile check added and awaiting CI.**
 
 ### Present in the source
 
@@ -24,7 +24,8 @@
 
 ### Verification
 
-- GitHub Actions passed on commit `c3775ae0755e29590a3dfc703e8dc995a726b2b1`: all 14 Rust unit tests, `cargo clippy --all-targets -- -D warnings`, and the TypeScript `tsc --noEmit` typecheck.
-- The Vitest helper tests are present and `npm test` runs them after Cargo tests, but Vitest itself is not part of the deliberately limited CI and has not been run in this environment.
-- CI does not compile the WASM target or run `wasm-opt`. The Codespace WebGL2 startup, WASM glue integration, visual scene and actual memory/performance behaviour remain unverified until the container is rebuilt and `npm run dev` is run there.
+- The previous lightweight GitHub Actions run passed all 14 Rust tests, clippy with warnings denied, and TypeScript typecheck.
+- Removed a duplicate WASM-only `wasm_memory` function export. A source scan found no other duplicate Rust function names and only the single intended `cfg(target_arch = "wasm32")` block.
+- CI now installs the `wasm32-unknown-unknown` target and runs `cargo check --target wasm32-unknown-unknown` to catch WASM-only compile errors. The first run after this change is pending.
+- Actual Codespace `npm run dev` startup and browser visual quality still need a user-side check.
 - `BUILD.md` contains no size or timing claims; target Codespace measurements have not been taken.

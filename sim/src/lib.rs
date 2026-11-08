@@ -701,11 +701,6 @@ fn escape_json(value: &str) -> String {
     escaped
 }
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub fn wasm_memory() -> JsValue {
-    wasm_bindgen::memory()
-}
 
 #[cfg(test)]
 mod tests {

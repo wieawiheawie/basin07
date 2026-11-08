@@ -17,6 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -27,6 +28,8 @@ jobs:
         run: cargo test --manifest-path sim/Cargo.toml
       - name: Rust clippy
         run: cargo clippy --manifest-path sim/Cargo.toml --all-targets -- -D warnings
+      - name: WASM target check
+        run: cargo check --manifest-path sim/Cargo.toml --target wasm32-unknown-unknown
       - name: TypeScript typecheck
         run: |
           npm install --no-audit --no-fund
