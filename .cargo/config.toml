@@ -3,7 +3,8 @@ jobs = 2
 incremental = true
 
 [alias]
-check-web = "check --profile wasm-dev --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07"
+check-web = "check --profile wasm-dev --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --bin basin07"
+test-client = "test --no-default-features --features client,desktop,dev-debug --lib"
 test-core = "test --no-default-features --lib"
 validate-core = "run --no-default-features --bin basin-validator -- --seeds 256"
 run-desktop = "run --no-default-features --features client,desktop --bin basin07"
