@@ -38,7 +38,7 @@ jobs:
         run: |
           if ! command -v clang >/dev/null 2>&1 || ! command -v ld.lld >/dev/null 2>&1; then
             sudo apt-get update -qq
-            sudo apt-get install -y clang lld
+            sudo apt-get install -y clang lld libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
           fi
 
       - name: Cache Cargo dependencies and target artifacts
@@ -56,13 +56,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Inspect WebAssembly dependency graph
-        run: cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --duplicates
+        run: cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --duplicates
 
       - name: Check fast WebAssembly dev profile
-        run: cargo check --profile wasm-dev --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --bin basin07
+        run: cargo check --profile wasm-dev --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --bin basin07
 
-      - name: Run Rust simulation tests
-        run: cargo test --no-default-features --lib
+      - name: Run Rust simulation and headless client tests
+        run: cargo test --no-default-features --features client,desktop,dev-debug --lib
 
       - name: Run Rust headless validator
         run: cargo run --no-default-features --bin basin-validator -- --seeds 256

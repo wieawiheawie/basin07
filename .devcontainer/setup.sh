@@ -46,12 +46,12 @@ cargo fetch --locked --target wasm32-unknown-unknown
 
 echo "[BASIN 07] Auditing dependencies..."
 cargo tree -d
-cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2 --duplicates
+cargo tree --target wasm32-unknown-unknown --no-default-features --features client,webgl2,dev-debug --duplicates
 cargo machete
 
 echo "[BASIN 07] Priming the incremental WebAssembly build cache..."
 CARGO_BUILD_JOBS=2 cargo build --locked --profile wasm-dev \
   --target wasm32-unknown-unknown --no-default-features \
-  --features client,webgl2 --bin basin07
+  --features client,webgl2,dev-debug --bin basin07
 
 echo "[BASIN 07] Setup complete. Run: trunk serve"
