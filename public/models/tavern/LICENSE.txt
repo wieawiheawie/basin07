@@ -1,0 +1,14 @@
+LOW POLY TAVERN SAMPLER (FREE) - LICENSE
+
+You may:
+  - use the models in personal and commercial projects: games, apps, prototypes, videos, renders
+  - change them: recolour, rescale, cut apart, combine
+  - ship them inside your game or app (as any game ships its models)
+Credit is welcome but not required.
+
+You may not:
+  - resell, share or give away the model files themselves, changed or not, on their own or as part of another
+    asset pack, template, model library or kit (including free models in the Roblox Creator Store)
+  - claim the models as your own work
+
+Downloading the sampler gives you this licence; the copyright stays with the author.
