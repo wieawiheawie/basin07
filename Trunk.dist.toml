@@ -1,9 +1,8 @@
 [build]
-target = "index.html"
+target = "index.dist.html"
 dist = "dist-deploy"
 public_url = "./"
 filehash = true
-cargo_profile = "dist"
 
 [serve]
 addresses = ["127.0.0.1"]
