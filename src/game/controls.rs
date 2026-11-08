@@ -89,12 +89,11 @@ pub fn handle_input(
     if keyboard.just_pressed(KeyCode::F12) {
         let selected = session.selected_machine;
         if let Some(id) = selected {
-            match session.plant.buy_reagent(id, session.selected_reagent, 0.5) {
+            let reagent = session.selected_reagent;
+            let reagent_name = crate::sim::catalog::REAGENTS[reagent.index()].name;
+            match session.plant.buy_reagent(id, reagent, 0.5) {
                 Ok(()) => {
-                    session.status_message = format!(
-                        "Ordered 0.5 t {}",
-                        crate::sim::catalog::REAGENTS[session.selected_reagent.index()].name
-                    )
+                    session.status_message = format!("Ordered 0.5 t {reagent_name}")
                 }
                 Err(err) => session.status_message = err,
             }
@@ -197,15 +196,16 @@ pub fn handle_input(
         session.selected_machine = Some(id);
         if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
             if let Some(from) = session.pending_connection.take() {
+                let line = session.selected_line;
                 match session.plant.connect(
                     Endpoint::Machine(from),
                     Endpoint::Machine(id),
-                    session.selected_line,
+                    line,
                 ) {
                     Ok(()) => {
                         session.status_message = format!(
                             "{} connected: #{from} → #{id}",
-                            session.selected_line.name()
+                            line.name()
                         )
                     }
                     Err(error) => session.status_message = format!("Connection refused: {error:?}"),
@@ -229,10 +229,11 @@ pub fn handle_input(
     } else if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
         session.status_message = "Shift-click a machine to select a connection endpoint.".into();
     } else {
-        match session.plant.place_machine(session.selected_kind, tile) {
+        let kind = session.selected_kind;
+        match session.plant.place_machine(kind, tile) {
             Ok(id) => {
                 session.selected_machine = Some(id);
-                session.status_message = format!("Placed {} #{id}", session.selected_kind.name());
+                session.status_message = format!("Placed {} #{id}", kind.name());
             }
             Err(error) => session.status_message = error,
         }
