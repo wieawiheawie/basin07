@@ -1,4 +1,4 @@
-use basin07::sim::{chemistry, economy};
+use basin07_core::sim::{chemistry, economy};
 
 fn main() {
     let seeds = parse_seeds();
