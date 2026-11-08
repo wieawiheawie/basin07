@@ -57,6 +57,7 @@ struct WorldObject {
     tilt: f32,
     target_tilt: f32,
     yaw: f32,
+    colour_index: u8,
 }
 
 struct Person {
@@ -110,7 +111,7 @@ pub struct Simulation {
     water_normals: Vec<f32>,
     objects: Vec<WorldObject>,
     object_transforms: Vec<f32>,
-    colours: Vec<u8>,
+    object_colours: Vec<u8>,
     bodies: Vec<RigidBody>,
     people: Vec<Person>,
     people_buffer: Vec<f32>,
@@ -135,59 +136,59 @@ impl Simulation {
         let objects = vec![
             WorldObject {
                 name: "bottle_1", kind: ObjectKind::Bottle, x: 2.0, z: 7.3,
-                cap_on: true, volume: INITIAL_BOTTLE_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0,
+                cap_on: true, volume: INITIAL_BOTTLE_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0,
             },
             WorldObject {
                 name: "bottle_2", kind: ObjectKind::Bottle, x: 8.0, z: 2.2,
-                cap_on: true, volume: INITIAL_BOTTLE_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 3.0,
+                cap_on: true, volume: INITIAL_BOTTLE_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 3.0, colour_index: 0,
             },
             WorldObject {
                 name: "book_1", kind: ObjectKind::Book, x: 3.2, z: 2.4,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.2,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.2, colour_index: 0,
             },
             WorldObject {
                 name: "book_2", kind: ObjectKind::Book, x: 3.0, z: 7.5,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.45,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.45, colour_index: 0,
             },
             WorldObject {
                 name: "book_3", kind: ObjectKind::Book, x: 8.9, z: 5.9,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.8,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.8, colour_index: 0,
             },
             WorldObject {
                 name: "pencil_1", kind: ObjectKind::Pencil, x: 1.3, z: 4.3,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2, colour_index: 0,
             },
             WorldObject {
                 name: "pencil_2", kind: ObjectKind::Pencil, x: 2.2, z: 4.8,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.5,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.5, colour_index: 0,
             },
             WorldObject {
                 name: "pencil_3", kind: ObjectKind::Pencil, x: 7.5, z: 4.0,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.9,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.9, colour_index: 0,
             },
             WorldObject {
                 name: "pencil_4", kind: ObjectKind::Pencil, x: 8.6, z: 4.8,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.1,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.1, colour_index: 0,
             },
             WorldObject {
                 name: "garden", kind: ObjectKind::Garden, x: 5.0, z: 5.0,
-                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0,
+                cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0,
             },
-            WorldObject { name: "plank_floor_1", kind: ObjectKind::PlankFloor, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "table_1", kind: ObjectKind::Table, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 7.28, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 7.79, z: 7.43, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 7.79, z: 7.99, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "tankard_1", kind: ObjectKind::Tankard, x: 7.48, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.3 },
-            WorldObject { name: "tankard_2", kind: ObjectKind::Tankard, x: 7.72, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.4 },
-            WorldObject { name: "mug_1", kind: ObjectKind::Mug, x: 7.60, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.15 },
-            WorldObject { name: "bread_basket_1", kind: ObjectKind::BreadBasket, x: 7.42, z: 7.79, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 },
-            WorldObject { name: "cheese_wheel_1", kind: ObjectKind::CheeseWheel, x: 7.79, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "candle_1", kind: ObjectKind::Candle, x: 7.60, z: 7.49, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "lantern_1", kind: ObjectKind::Lantern, x: 7.82, z: 7.73, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "barrel_1", kind: ObjectKind::Barrel, x: 5.55, z: 6.25, cap_on: true, volume: INITIAL_BARREL_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "crate_1", kind: ObjectKind::Crate, x: 6.15, z: 5.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 },
-            WorldObject { name: "sack_1", kind: ObjectKind::Sack, x: 5.75, z: 5.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.3 },
+            WorldObject { name: "plank_floor_1", kind: ObjectKind::PlankFloor, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "table_1", kind: ObjectKind::Table, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 7.28, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 7.79, z: 7.43, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 7.79, z: 7.99, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "tankard_1", kind: ObjectKind::Tankard, x: 7.48, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.3 , colour_index: 0 },
+            WorldObject { name: "tankard_2", kind: ObjectKind::Tankard, x: 7.72, z: 7.60, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.4 , colour_index: 0 },
+            WorldObject { name: "mug_1", kind: ObjectKind::Mug, x: 7.60, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.15 , colour_index: 0 },
+            WorldObject { name: "bread_basket_1", kind: ObjectKind::BreadBasket, x: 7.42, z: 7.79, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 , colour_index: 0 },
+            WorldObject { name: "cheese_wheel_1", kind: ObjectKind::CheeseWheel, x: 7.79, z: 7.80, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "candle_1", kind: ObjectKind::Candle, x: 7.60, z: 7.49, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "lantern_1", kind: ObjectKind::Lantern, x: 7.82, z: 7.73, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "barrel_1", kind: ObjectKind::Barrel, x: 5.55, z: 6.25, cap_on: true, volume: INITIAL_BARREL_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
+            WorldObject { name: "crate_1", kind: ObjectKind::Crate, x: 6.15, z: 5.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 , colour_index: 0 },
+            WorldObject { name: "sack_1", kind: ObjectKind::Sack, x: 5.75, z: 5.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.3 , colour_index: 0 },
         ];
 
         let people = vec![
@@ -199,7 +200,7 @@ impl Simulation {
         ];
 
         let object_transforms = vec![0.0; objects.len() * OBJECT_MATRIX_STRIDE];
-        let colours = vec![0; objects.len()];
+        let object_colours = vec![0; objects.len()];
         let bodies = objects.iter().map(|object| RigidBody::for_object(object.kind)).collect();
 
         let mut simulation = Simulation {
@@ -213,7 +214,7 @@ impl Simulation {
             people_buffer: vec![0.0; people.len() * 5],
             objects,
             object_transforms,
-            colours,
+            object_colours,
             bodies,
             people,
             glossary: Glossary::default(),
@@ -341,7 +342,7 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = objectColoursPtr)]
     pub fn object_colours_ptr(&self) -> u32 {
-        self.colours.as_ptr() as usize as u32
+        self.object_colours.as_ptr() as usize as u32
     }
 
     #[wasm_bindgen(js_name = peopleCount)]
@@ -417,7 +418,7 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = objectColour)]
     pub fn object_colour(&self, index: usize) -> u8 {
-        self.colours.get(index).copied().unwrap_or(0)
+        self.objects.get(index).map(|object| object.colour_index).unwrap_or(0)
     }
 
     #[wasm_bindgen(js_name = objectVelocityX)]
@@ -699,7 +700,7 @@ impl Simulation {
                 if self.objects[index].kind == ObjectKind::Garden {
                     return Err("The garden itself cannot be painted; choose a movable desk object.".to_owned());
                 }
-                self.colours[index] = colour;
+                self.objects[index].colour_index = colour;
                 self.discover_action("action.paint");
                 Ok(format!("{name} is now painted {}.", colour_name(colour)))
             }
@@ -1044,6 +1045,7 @@ impl Simulation {
 
     fn sync_object_transforms(&mut self) {
         for (index, object) in self.objects.iter().enumerate() {
+            self.object_colours[index] = object.colour_index;
             let offset = index * OBJECT_MATRIX_STRIDE;
             let (sin_yaw, cos_yaw) = object.yaw.sin_cos();
             let (sin_tilt, cos_tilt) = object.tilt.sin_cos();
@@ -1332,10 +1334,10 @@ mod tests {
         simulation.cooldown = 0.0;
         simulation.process_queue();
         assert!(!simulation.objects[0].cap_on);
-        assert_eq!(simulation.colours[5], 0);
+        assert_eq!(simulation.objects[5].colour_index, 0);
         simulation.cooldown = 0.0;
         simulation.process_queue();
-        assert_eq!(simulation.colours[5], 1);
+        assert_eq!(simulation.objects[5].colour_index, 1);
     }
 
     #[test]
@@ -1355,9 +1357,9 @@ mod tests {
         assert_eq!(simulation.listeners.len(), 1);
         simulation.cooldown = 0.0;
         simulation.process_queue();
-        assert_eq!(simulation.colours[5], 1);
+        assert_eq!(simulation.objects[5].colour_index, 1);
         simulation.update_listeners();
-        assert_eq!(simulation.colours[6], 2);
+        assert_eq!(simulation.objects[6].colour_index, 2);
     }
 
     #[test]
@@ -1371,7 +1373,7 @@ mod tests {
         assert!(simulation.bodies[5].vx > 0.0);
         simulation.cooldown = 0.0;
         simulation.process_queue();
-        assert_eq!(simulation.colours[5], 1);
+        assert_eq!(simulation.objects[5].colour_index, 1);
     }
 
     #[test]

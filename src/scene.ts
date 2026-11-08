@@ -657,25 +657,6 @@ function createDeskScene(
     });
   }
 
-  function applyObjectColour(index: number, colourIndex: number): void {
-    if (appliedObjectColours[index] === colourIndex) return;
-    appliedObjectColours[index] = colourIndex;
-    const visual = objectVisuals[index];
-    if (!visual) return;
-    const tint = colourIndex === 0 ? null : paintPalette[colourIndex - 1];
-    visual.root.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const material of materials) {
-        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial)) continue;
-        const original = paintOriginals.get(material);
-        if (!original) continue;
-        if (tint) material.color.copy(original).lerp(tint, 0.76);
-        else material.color.copy(original);
-      }
-    });
-  }
-
   function decodeAsset(base64: string): ArrayBuffer {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -1080,20 +1061,6 @@ function createDeskScene(
       for (let index = 0; index < objectVisuals.length; index += 1) {
         const visual = objectVisuals[index];
         if (!visual) continue;
-        const colourIndex = simulation.objectColour(index);
-        if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
-
-        if (visual.kind === "pencil") {
-          const worldX = simulation.objectX(index);
-          const worldZ = simulation.objectZ(index);
-          const gridX = Math.round(worldX / DESK_SIZE * (GRID - 1));
-          const gridZ = Math.round(worldZ / DESK_SIZE * (GRID - 1));
-          const gridIndex = THREE.MathUtils.clamp(gridZ, 0, GRID - 1) * GRID
-            + THREE.MathUtils.clamp(gridX, 0, GRID - 1);
-          visual.root.position.set(worldX - 5, 0.36 + (heightView[gridIndex] ?? 0), worldZ - 5);
-          visual.root.rotation.y = simulation.objectYaw(index);
-        }
-
         const colourIndex = objectColoursView[index] ?? 0;
         if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
 
