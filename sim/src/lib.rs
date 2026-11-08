@@ -1385,19 +1385,26 @@ impl Simulation {
                     }
                 }
                 ResidentTask::DigGarden => {
-                    let person = &mut self.people[index];
-                    person.activity = 2;
-                    person.speed = 0.0;
-                    if person.action_timer <= 0.0 {
-                        person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                        let offset_x = ((person.seed >> 8) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
-                        let offset_z = ((person.seed >> 18) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
-                        let start_x = 5.0 + offset_x;
-                        let start_z = 5.0 + offset_z;
-                        let line_x = 0.16 + ((person.seed >> 4) % 1000) as f32 / 1000.0 * 0.24;
-                        self.carve_line((start_x - line_x, start_z), (start_x + line_x, start_z + 0.02), 0.004, 0.18);
-                        person.action_timer = 0.42;
-                        person.heading = 0.0;
+                    let stroke = {
+                        let person = &mut self.people[index];
+                        person.activity = 2;
+                        person.speed = 0.0;
+                        if person.action_timer <= 0.0 {
+                            person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                            let offset_x = ((person.seed >> 8) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
+                            let offset_z = ((person.seed >> 18) % 1000) as f32 / 1000.0 * 0.54 - 0.27;
+                            let start_x = 5.0 + offset_x;
+                            let start_z = 5.0 + offset_z;
+                            let line_x = 0.16 + ((person.seed >> 4) % 1000) as f32 / 1000.0 * 0.24;
+                            person.action_timer = 0.42;
+                            person.heading = 0.0;
+                            Some(((start_x - line_x, start_z), (start_x + line_x, start_z + 0.02)))
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some((start, end)) = stroke {
+                        self.carve_line(start, end, 0.004, 0.18);
                     }
                 }
                 ResidentTask::Eat => {
@@ -1478,50 +1485,6 @@ impl Simulation {
                 let gaussian = (-distance_sq / sigma_sq_twice).exp();
                 let index = grid_z * GRID_SIZE + grid_x;
                 self.height[index] = (self.height[index] - depth * gaussian).max(-1.2);
-            }
-        }
-    }
-
-    fn update_people(&mut self, dt: f32) {
-        let (people, water) = (&mut self.people, &self.water);
-        for person in people.iter_mut() {
-            let gx = (person.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
-            let gz = (person.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
-            let current_water = water[gz.min(GRID_SIZE - 1) * GRID_SIZE + gx.min(GRID_SIZE - 1)];
-            if current_water > 0.035 {
-                person.wetness = 1.0;
-                person.heading += std::f32::consts::PI * 0.72;
-            } else {
-                person.wetness = (person.wetness - dt * 0.25).max(0.0);
-            }
-
-            if !person.at_tavern {
-                let dx = person.target_x - person.x;
-                let dz = person.target_z - person.z;
-                let distance = (dx * dx + dz * dz).sqrt();
-                if distance <= 0.12 {
-                    person.x = person.target_x;
-                    person.z = person.target_z;
-                    person.at_tavern = true;
-                    person.seated = person.seat_target;
-                    continue;
-                }
-                person.heading = dz.atan2(dx);
-                let travel = (0.42 * dt).min(distance);
-                person.x += person.heading.cos() * travel;
-                person.z += person.heading.sin() * travel;
-                continue;
-            }
-
-            if person.seated {
-                continue;
-            }
-
-            person.wander_timer -= dt;
-            if person.wander_timer <= 0.0 {
-                person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                person.heading += (person.seed as f32 / u32::MAX as f32 - 0.5) * 0.7;
-                person.wander_timer = 1.5 + (person.seed % 100) as f32 / 90.0;
             }
         }
     }
