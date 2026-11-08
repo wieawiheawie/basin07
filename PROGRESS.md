@@ -40,6 +40,16 @@
 - Middle-drag orbits the camera; the wheel zooms. The right button is no longer used for camera orbit.
 - Dragging, pickup and direct uncap update the same Rust simulation state used by the command interpreter.
 
+## Rendering, digging and diegetic controls
+
+- Fixed the startup crash by initialising the scene triangle counter before starting the synchronous local-model loading pass.
+- Rust tabletop digging uses a single-pass nearest-point Gaussian brush per grid vertex; strokes deepen the height grid smoothly rather than stamping a hard quadratic edge. Live pointer strokes use a small per-event strength to avoid over-digging (0.0045 world-height per segment).
+- The Rust fixed-step terrain refresh recalculates finite-difference height normals and updates the WASM normal buffer. Three.js marks the shared position/normal attributes dirty; normals are not redundantly recomputed in the renderer.
+- Garden furrows use Gaussian falloff on the subdivided soil mesh and recompute vertex normals after each edit.
+- Normal graphics uses half-resolution SSAO, 2048² PCF soft key-light shadows and low-amplitude procedural bump detail on wood. Low graphics disables SSAO, bloom, shadows, the desk lamp and dust.
+- Clicking book_1 opens the journal/wordbook. Clicking the physical desk lamp switches High/Low graphics; the floating buttons remain as alternatives.
+- Dragged and picked-up objects ease toward the pointer with exponential interpolation, while their positions remain owned by Rust/WASM.
+
 ## Existing simulation and known limits
 
 - Rust crate with a 128 × 128 height grid, fixed 60 Hz stepping, water depth grid, bottle and rain-barrel state, smallfolk positions and command energy queue.

@@ -304,11 +304,11 @@ impl Simulation {
         }
         let dx = to_x - from_x;
         let dz = to_z - from_z;
-        if dx * dx + dz * dz < 0.0004 || self.energy < 0.025 {
+        if dx * dx + dz * dz < 0.0004 || self.energy < 0.001 {
             return false;
         }
-        self.energy -= 0.025;
-        self.carve_line((from_x, from_z), (to_x, to_z), 0.055, 0.14);
+        self.energy -= 0.001;
+        self.carve_line((from_x, from_z), (to_x, to_z), 0.0045, 0.14);
         self.discover_action("action.carve");
         true
     }
@@ -1018,35 +1018,40 @@ impl Simulation {
     fn carve_line(&mut self, start: (f32, f32), end: (f32, f32), depth: f32, width: f32) {
         let dx = end.0 - start.0;
         let dz = end.1 - start.1;
-        let distance = (dx * dx + dz * dz).sqrt();
-        let samples = ((distance / (CELL_SIZE * 0.65)).ceil() as usize).max(1);
-        let radius = width * 0.5;
+        let length_sq = dx * dx + dz * dz;
+        let radius = (width * 0.5).max(CELL_SIZE * 0.5);
+        let reach = radius * 1.15;
+        let sigma = (radius * 0.48).max(CELL_SIZE * 0.35);
+        let min_x = ((start.0.min(end.0) - reach) / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+            .floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let max_x = ((start.0.max(end.0) + reach) / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+            .ceil().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let min_z = ((start.1.min(end.1) - reach) / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+            .floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let max_z = ((start.1.max(end.1) + reach) / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+            .ceil().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let sigma_sq_twice = 2.0 * sigma * sigma;
 
-        for sample in 0..=samples {
-            let t = sample as f32 / samples as f32;
-            let x = start.0 + dx * t;
-            let z = start.1 + dz * t;
-            let center_x = (x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
-            let center_z = (z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as isize;
-            let radius_cells = (radius / CELL_SIZE).ceil() as isize;
-
-            for offset_z in -radius_cells..=radius_cells {
-                for offset_x in -radius_cells..=radius_cells {
-                    let grid_x = center_x + offset_x;
-                    let grid_z = center_z + offset_z;
-                    if grid_x < 0 || grid_z < 0 || grid_x >= GRID_SIZE as isize || grid_z >= GRID_SIZE as isize {
-                        continue;
-                    }
-                    let world_dx = offset_x as f32 * CELL_SIZE;
-                    let world_dz = offset_z as f32 * CELL_SIZE;
-                    let radial = (world_dx * world_dx + world_dz * world_dz).sqrt();
-                    if radial > radius {
-                        continue;
-                    }
-                    let falloff = 1.0 - (radial / radius.max(CELL_SIZE)).powi(2);
-                    let index = grid_z as usize * GRID_SIZE + grid_x as usize;
-                    self.height[index] = self.height[index].min(-depth * falloff);
+        // Evaluate one nearest point per grid vertex. This avoids overlapping brush stamps
+        // along the stroke and gives the cut a continuous Gaussian cross-section.
+        for grid_z in min_z..=max_z {
+            let world_z = grid_z as f32 * CELL_SIZE;
+            for grid_x in min_x..=max_x {
+                let world_x = grid_x as f32 * CELL_SIZE;
+                let t = if length_sq > 0.000001 {
+                    (((world_x - start.0) * dx + (world_z - start.1) * dz) / length_sq).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let nearest_x = start.0 + dx * t;
+                let nearest_z = start.1 + dz * t;
+                let distance_sq = (world_x - nearest_x).powi(2) + (world_z - nearest_z).powi(2);
+                if distance_sq > reach * reach {
+                    continue;
                 }
+                let gaussian = (-distance_sq / sigma_sq_twice).exp();
+                let index = grid_z * GRID_SIZE + grid_x;
+                self.height[index] = (self.height[index] - depth * gaussian).max(-1.2);
             }
         }
     }
@@ -1311,12 +1316,39 @@ mod tests {
     }
 
     #[test]
+    fn carved_terrain_refreshes_wasm_normal_buffer() {
+        let mut simulation = ready_simulation();
+        let sample = (64 * GRID_SIZE + 65) * 3;
+        let original_x_normal = simulation.terrain_normals[sample];
+        simulation.carve_line((5.0, 5.0), (5.0, 5.0), 0.2, 0.8);
+        simulation.refresh_mesh_buffers();
+        assert_ne!(simulation.terrain_normals[sample], original_x_normal);
+        assert!(simulation.terrain_normals[sample].abs() > 0.01);
+    }
+
+    #[test]
+    fn gaussian_carve_has_a_smooth_cross_section_and_updates_neighbour_cells() {
+        let mut simulation = ready_simulation();
+        simulation.carve_line((5.0, 5.0), (5.0, 5.0), 0.2, 0.8);
+        let center = 64 * GRID_SIZE + 64;
+        let near = center + 1;
+        let shoulder = center + 3;
+        let center_depth = simulation.height[center];
+        let near_depth = simulation.height[near];
+        let shoulder_depth = simulation.height[shoulder];
+        assert!(center_depth < near_depth);
+        assert!(near_depth < shoulder_depth);
+        assert!(shoulder_depth < 0.0);
+        assert!(simulation.height[center + 8] > shoulder_depth);
+    }
+
+    #[test]
     fn direct_carve_strokes_cut_grooves_and_cost_attention() {
         let mut simulation = ready_simulation();
         let before = simulation.energy;
         assert!(simulation.carve_stroke(2.0, 2.0, 3.0, 2.0));
         assert!(simulation.energy < before);
-        assert!(simulation.height.iter().any(|height| *height < -0.01));
+        assert!(simulation.height.iter().any(|height| *height < -0.001));
         assert!(!simulation.carve_stroke(f32::NAN, 2.0, 3.0, 2.0));
     }
 

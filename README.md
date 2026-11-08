@@ -22,7 +22,7 @@ Open forwarded port 5173. Without a local asset import, procedural props remain 
 
 ## Playing with the desk
 
-The main interaction is direct mouse manipulation. Left-drag any item to move it. Right-click an item to pick it up, move it with the pointer, then right-click again to put it down. Hold both mouse buttons and drag over the wooden tabletop to carve a groove, or over the garden soil to cut a visible furrow. Hold both buttons on a bottle to uncap it. Middle-drag rotates the camera and the scroll wheel zooms. The **Commands** button opens the optional scripting console when you want precise or automated actions.
+The main interaction is direct mouse manipulation. Left-drag any item to move it. Right-click an item to pick it up, move it with the pointer, then right-click again to put it down. Hold both mouse buttons and drag over the wooden tabletop to carve a groove, or over the garden soil to cut a visible furrow. Hold both buttons on a bottle to uncap it. Middle-drag rotates the camera and the scroll wheel zooms. Click the **journal book** to open the wordbook, or click the **desk lamp** to switch between High and Low graphics. The floating controls remain available too. The **Commands** button opens the optional scripting console when you want precise or automated actions.
 
 ## Commands
 

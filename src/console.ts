@@ -195,11 +195,24 @@ export function setupConsole(simulation: Simulation) {
     renderHelp();
   });
 
-  lowButton.addEventListener("click", () => {
-    const low = lowButton.getAttribute("aria-pressed") !== "true";
+  function setLowGraphics(low: boolean): void {
     lowButton.setAttribute("aria-pressed", String(low));
     lowButton.textContent = low ? "Low graphics · on" : "Low graphics";
     document.dispatchEvent(new CustomEvent("deskbound:graphics", { detail: { low } }));
+  }
+
+  lowButton.addEventListener("click", () => {
+    setLowGraphics(lowButton.getAttribute("aria-pressed") !== "true");
+  });
+
+  document.addEventListener("deskbound:toggle-graphics", () => {
+    setLowGraphics(lowButton.getAttribute("aria-pressed") !== "true");
+  });
+
+  document.addEventListener("deskbound:open-journal", () => {
+    helpPanel.classList.add("open");
+    helpButton.setAttribute("aria-expanded", "true");
+    renderHelp();
   });
 
   appendLog("Left-drag to move things. Right-click to pick them up. Hold both mouse buttons to carve the tabletop or uncap a bottle.", "note");
@@ -227,7 +240,7 @@ export function setupConsole(simulation: Simulation) {
     setInteraction(message: string): void {
       interactionHint.textContent = message.length > 0
         ? message.toUpperCase()
-        : "LEFT-DRAG TO MOVE · RIGHT-CLICK TO PICK UP · HOLD BOTH TO CARVE / UNCAP";
+        : "LEFT-DRAG MOVE · RIGHT-CLICK PICK UP · BOTH BUTTONS DIG / UNCAP · BOOK = JOURNAL · LAMP = GRAPHICS";
     }
   };
 }

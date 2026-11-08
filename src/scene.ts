@@ -5,6 +5,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
 import type { Simulation } from "../pkg/deskbound_sim.js";
 
 type HoverCallback = (name: string) => void;
@@ -74,6 +75,35 @@ function woodTexture(): THREE.CanvasTexture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(1, 1);
+  texture.anisotropy = 4;
+  return texture;
+}
+
+
+function surfaceBumpTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas textures are unavailable.");
+  const image = context.createImageData(128, 128);
+  for (let y = 0; y < 128; y += 1) {
+    for (let x = 0; x < 128; x += 1) {
+      const coarse = Math.sin(x * 0.19 + Math.sin(y * 0.11) * 2.4);
+      const fine = Math.sin(x * 1.71 + y * 2.13) * Math.sin(y * 1.31 - x * 0.73);
+      const value = Math.max(0, Math.min(255, Math.round(128 + coarse * 5 + fine * 9)));
+      const offset = (y * 128 + x) * 4;
+      image.data[offset] = value;
+      image.data[offset + 1] = value;
+      image.data[offset + 2] = value;
+      image.data[offset + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(7, 7);
   texture.anisotropy = 4;
   return texture;
 }
@@ -165,15 +195,15 @@ function createDeskScene(
   renderer.domElement.addEventListener("contextmenu", (event) => event.preventDefault());
   container.prepend(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight("#f9e5c7", "#4a463e", 1.7));
-  const keyLight = new THREE.DirectionalLight("#ffe5c1", 2.1);
-  keyLight.position.set(-7, 13, 6);
+  scene.add(new THREE.HemisphereLight("#f9e5c7", "#4a463e", 1.0));
+  const keyLight = new THREE.DirectionalLight("#ffe5c1", 2.55);
+  keyLight.position.set(-8.5, 8.2, 4.2);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(1536, 1536);
-  keyLight.shadow.camera.left = -12;
-  keyLight.shadow.camera.right = 12;
-  keyLight.shadow.camera.top = 12;
-  keyLight.shadow.camera.bottom = -12;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.left = -11;
+  keyLight.shadow.camera.right = 11;
+  keyLight.shadow.camera.top = 11;
+  keyLight.shadow.camera.bottom = -11;
   keyLight.shadow.bias = -0.00025;
   keyLight.shadow.normalBias = 0.025;
   scene.add(keyLight);
@@ -184,8 +214,13 @@ function createDeskScene(
 
   const wood = woodTexture();
   const floorMap = floorTexture();
-  const woodMat = new THREE.MeshStandardMaterial({ map: wood, roughness: 0.76, color: "#e0bd91" });
-  const edgeWood = new THREE.MeshStandardMaterial({ color: "#71492f", roughness: 0.72 });
+  const surfaceBump = surfaceBumpTexture();
+  const woodMat = new THREE.MeshStandardMaterial({
+    map: wood, bumpMap: surfaceBump, bumpScale: 0.012, roughness: 0.88, color: "#e0bd91"
+  });
+  const edgeWood = new THREE.MeshStandardMaterial({
+    color: "#71492f", bumpMap: surfaceBump, bumpScale: 0.018, roughness: 0.78
+  });
   const wallMat = new THREE.MeshStandardMaterial({ color: "#d2bda0", roughness: 0.94 });
   const trimMat = new THREE.MeshStandardMaterial({ color: "#9b795b", roughness: 0.82 });
   const floorMat = new THREE.MeshStandardMaterial({ map: floorMap, roughness: 0.96 });
@@ -403,6 +438,8 @@ function createDeskScene(
   // The lamp is a decorative warm source, not a gameplay object.
   const lamp = new THREE.Group();
   lamp.position.set(-3.55, 0.42, -3.55);
+  lamp.userData.sceneAction = "toggle-graphics";
+  lamp.userData.label = "desk lamp · click to switch graphics";
   scene.add(lamp);
   const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.34, 0.10, 12), brassMat);
   lampBase.position.y = 0.05;
@@ -454,6 +491,7 @@ function createDeskScene(
   const paintOriginals = new WeakMap<THREE.Material, THREE.Color>();
   const appliedObjectColours = new Uint8Array(simulation.objectCount());
   appliedObjectColours.fill(255);
+  pickables.push(lamp);
 
   function makeBottle(index: number): ObjectVisual {
     const root = new THREE.Group();
@@ -546,7 +584,7 @@ function createDeskScene(
     plot.position.y = 0.11;
     plot.castShadow = true;
     root.add(plot);
-    const soilGeometry = new THREE.PlaneGeometry(1.56, 1.24, 32, 24);
+    const soilGeometry = new THREE.PlaneGeometry(1.56, 1.24, 48, 36);
     soilGeometry.rotateX(-Math.PI / 2);
     gardenSoilMesh = new THREE.Mesh(soilGeometry, soilMat);
     gardenSoilMesh.position.y = 0.205;
@@ -626,6 +664,10 @@ function createDeskScene(
     visual.root.userData.label = simulation.objectName(index);
     visual.root.userData.objectIndex = index;
     visual.root.userData.baseY = y;
+    if (kind === "book" && simulation.objectName(index) === "book_1") {
+      visual.root.userData.sceneAction = "journal";
+      visual.root.userData.label = "journal book · click to open";
+    }
     scene.add(visual.root);
     pickables.push(visual.root);
     objectVisuals.push(visual);
@@ -878,6 +920,7 @@ function createDeskScene(
       status.classList.add("complete");
     }
   }
+  let sceneTriangleCount = 0;
   void loadTavernModels();
 
   // A loose cap is a real mesh that remains on the tabletop once removed.
@@ -917,21 +960,38 @@ function createDeskScene(
   const dustMaterial = new THREE.PointsMaterial({ color: "#ffe5b3", size: 0.035, transparent: true, opacity: 0.32, depthWrite: false, sizeAttenuation: true });
   const dust = new THREE.Points(dustGeometry, dustMaterial);
   scene.add(dust);
+  // Recount after the residents and dust have been attached as well as the props.
+  updateSceneTriangleCount();
 
   let lowGraphics = false;
+  let ssaoPass: SSAOPass | null = null;
   document.addEventListener("deskbound:graphics", (event) => {
     const custom = event as CustomEvent<{ low: boolean }>;
     lowGraphics = custom.detail.low;
     renderer.shadowMap.enabled = !lowGraphics;
     keyLight.castShadow = !lowGraphics;
     lampLight.castShadow = false;
+    lampLight.visible = !lowGraphics;
+    bulb.visible = !lowGraphics;
     dust.visible = !lowGraphics;
+    if (ssaoPass) ssaoPass.enabled = !lowGraphics;
     bloomPass.enabled = !lowGraphics;
   });
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.48, 0.84);
+  ssaoPass = new SSAOPass(
+    scene,
+    camera,
+    Math.max(1, Math.floor(container.clientWidth * 0.65)),
+    Math.max(1, Math.floor(container.clientHeight * 0.65)),
+    24
+  );
+  ssaoPass.kernelRadius = 8;
+  ssaoPass.minDistance = 0.004;
+  ssaoPass.maxDistance = 0.14;
+  composer.addPass(ssaoPass);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.42, 0.86);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -948,6 +1008,16 @@ function createDeskScene(
   let previousY = 0;
   let objectOffsetX = 0;
   let objectOffsetZ = 0;
+  let smoothMoveIndex = -1;
+  let smoothX = 0;
+  let smoothZ = 0;
+  let targetX = 0;
+  let targetZ = 0;
+  let lastDragSyncTime = performance.now();
+  let clickAction: string | null = null;
+  let pointerPressX = 0;
+  let pointerPressY = 0;
+  let clickActionMoved = false;
   let combinedMode: "carve" | "uncap" | null = null;
   let lastCarvePoint: THREE.Vector3 | null = null;
   let lastCarveWasGarden = false;
@@ -967,7 +1037,9 @@ function createDeskScene(
     const hit = raycaster.intersectObjects(pickables, true)[0];
     if (!hit) return null;
     let root: THREE.Object3D | null = hit.object;
-    while (root && root.userData.objectIndex === undefined) root = root.parent;
+    while (root && root.userData.objectIndex === undefined && root.userData.sceneAction === undefined) {
+      root = root.parent;
+    }
     return root ? { root, point: hit.point } : null;
   }
 
@@ -977,11 +1049,8 @@ function createDeskScene(
 
   function moveFromPointer(index: number): void {
     if (index < 0 || !pointerDeskPosition()) return;
-    simulation.moveObject(
-      index,
-      pointerWorld.x + 5 + objectOffsetX,
-      pointerWorld.z + 5 + objectOffsetZ
-    );
+    targetX = THREE.MathUtils.clamp(pointerWorld.x + 5 + objectOffsetX, 0.08, 9.92);
+    targetZ = THREE.MathUtils.clamp(pointerWorld.z + 5 + objectOffsetZ, 0.08, 9.92);
   }
 
   function carveSurfaceHit(): { point: THREE.Vector3; garden: boolean } | null {
@@ -996,8 +1065,10 @@ function createDeskScene(
   function carveGardenSegment(from: THREE.Vector3, to: THREE.Vector3): void {
     if (!gardenSoilMesh) return;
     gardenSoilMesh.updateWorldMatrix(true, false);
-    gardenLocalA.copy(gardenSoilMesh.worldToLocal(from.clone()));
-    gardenLocalB.copy(gardenSoilMesh.worldToLocal(to.clone()));
+    gardenLocalA.copy(from);
+    gardenLocalB.copy(to);
+    gardenSoilMesh.worldToLocal(gardenLocalA);
+    gardenSoilMesh.worldToLocal(gardenLocalB);
     const position = gardenSoilMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
     const ax = gardenLocalA.x;
     const az = gardenLocalA.z;
@@ -1005,6 +1076,8 @@ function createDeskScene(
     const dz = gardenLocalB.z - az;
     const lengthSq = dx * dx + dz * dz;
     const radius = 0.105;
+    const sigma = radius * 0.48;
+    const inverseSigmaSquaredTwice = 1 / (2 * sigma * sigma);
     for (let vertex = 0; vertex < position.count; vertex += 1) {
       const x = position.getX(vertex);
       const z = position.getZ(vertex);
@@ -1015,8 +1088,8 @@ function createDeskScene(
       const nearestZ = az + dz * t;
       const distance = Math.hypot(x - nearestX, z - nearestZ);
       if (distance >= radius) continue;
-      const falloff = 1 - (distance / radius) ** 2;
-      position.setY(vertex, Math.max(-0.075, position.getY(vertex) - 0.034 * falloff));
+      const falloff = Math.exp(-(distance * distance) * inverseSigmaSquaredTwice);
+      position.setY(vertex, Math.max(-0.075, position.getY(vertex) - 0.006 * falloff));
     }
     position.needsUpdate = true;
     gardenSoilMesh.geometry.computeVertexNormals();
@@ -1025,6 +1098,8 @@ function createDeskScene(
   function beginCombinedGesture(): void {
     dragIndex = -1;
     heldIndex = -1;
+    smoothMoveIndex = -1;
+    clickAction = null;
     const hit = rootHit();
     if (hit) {
       const index = Number(hit.root.userData.objectIndex);
@@ -1078,8 +1153,14 @@ function createDeskScene(
     updatePointerRay(event);
 
     if ((event.buttons & 3) === 3) {
+      clickAction = null;
       continueCombinedGesture();
       return;
+    }
+    if (clickAction !== null &&
+        Math.hypot(event.clientX - pointerPressX, event.clientY - pointerPressY) > 5) {
+      clickActionMoved = true;
+      clickAction = null;
     }
     if (combinedMode !== null) {
       combinedMode = null;
@@ -1148,14 +1229,28 @@ function createDeskScene(
       if (heldIndex >= 0) return;
       const hit = rootHit();
       if (!hit) return;
-      dragIndex = Number(hit.root.userData.objectIndex);
-      renderer.domElement.style.cursor = "grabbing";
-      const index = dragIndex;
-      if (pointerDeskPosition()) {
-        objectOffsetX = simulation.objectX(index) - (pointerWorld.x + 5);
-        objectOffsetZ = simulation.objectZ(index) - (pointerWorld.z + 5);
+      clickAction = typeof hit.root.userData.sceneAction === "string"
+        ? String(hit.root.userData.sceneAction)
+        : null;
+      pointerPressX = event.clientX;
+      pointerPressY = event.clientY;
+      clickActionMoved = false;
+      const objectIndex = hit.root.userData.objectIndex;
+      if (objectIndex !== undefined) {
+        dragIndex = Number(objectIndex);
+        renderer.domElement.style.cursor = "grabbing";
+        const index = dragIndex;
+        smoothMoveIndex = index;
+        smoothX = simulation.objectX(index);
+        smoothZ = simulation.objectZ(index);
+        targetX = smoothX;
+        targetZ = smoothZ;
+        if (pointerDeskPosition()) {
+          objectOffsetX = smoothX - (pointerWorld.x + 5);
+          objectOffsetZ = smoothZ - (pointerWorld.z + 5);
+        }
+        onInteraction("Moving " + simulation.objectName(index) + ". Release to place it.");
       }
-      onInteraction("Moving " + simulation.objectName(index) + ". Release to place it.");
       return;
     }
     if (event.button === 2) {
@@ -1166,12 +1261,17 @@ function createDeskScene(
         return;
       }
       const hit = rootHit();
-      if (!hit) return;
+      if (!hit || hit.root.userData.objectIndex === undefined) return;
       heldIndex = Number(hit.root.userData.objectIndex);
+      smoothMoveIndex = heldIndex;
+      smoothX = simulation.objectX(heldIndex);
+      smoothZ = simulation.objectZ(heldIndex);
+      targetX = smoothX;
+      targetZ = smoothZ;
       renderer.domElement.style.cursor = "grabbing";
       if (pointerDeskPosition()) {
-        objectOffsetX = simulation.objectX(heldIndex) - (pointerWorld.x + 5);
-        objectOffsetZ = simulation.objectZ(heldIndex) - (pointerWorld.z + 5);
+        objectOffsetX = smoothX - (pointerWorld.x + 5);
+        objectOffsetZ = smoothZ - (pointerWorld.z + 5);
       }
       onInteraction("Picked up " + simulation.objectName(heldIndex) + ". Right-click again to put it down.");
     }
@@ -1179,7 +1279,18 @@ function createDeskScene(
 
   renderer.domElement.addEventListener("pointerup", (event) => {
     if (event.button === 0) {
-      if (dragIndex >= 0) onInteraction("Placed " + simulation.objectName(dragIndex) + ".");
+      const activateSceneItem = clickAction !== null && !clickActionMoved;
+      if (activateSceneItem) {
+        if (clickAction === "journal") {
+          document.dispatchEvent(new CustomEvent("deskbound:open-journal"));
+          onInteraction("Opened the journal.");
+        } else if (clickAction === "toggle-graphics") {
+          document.dispatchEvent(new CustomEvent("deskbound:toggle-graphics"));
+          onInteraction("Switched the desk lamp and graphics mode.");
+        }
+      }
+      clickAction = null;
+      if (dragIndex >= 0 && !activateSceneItem) onInteraction("Placed " + simulation.objectName(dragIndex) + ".");
       dragIndex = -1;
       if (heldIndex < 0) renderer.domElement.style.cursor = "default";
     }
@@ -1191,6 +1302,7 @@ function createDeskScene(
   });
   renderer.domElement.addEventListener("pointercancel", () => {
     dragIndex = -1;
+    clickAction = null;
     cameraDragging = false;
     combinedMode = null;
     lastCarvePoint = null;
@@ -1205,17 +1317,18 @@ function createDeskScene(
   const resizeObserver = new ResizeObserver(() => {
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
+    ssaoPass?.setSize(Math.floor(width * 0.65), Math.floor(height * 0.65));
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
+    ssaoPass?.setSize(Math.max(1, Math.floor(width * 0.65)), Math.max(1, Math.floor(height * 0.65)));
   });
   resizeObserver.observe(container);
 
   const timeUniform = waterMaterial.uniforms.uTime as THREE.IUniform<number>;
   let lastPeopleTime = 0;
   const performanceLabel = document.getElementById("performance-label");
-  let sceneTriangleCount = 0;
   const normalSamples = new Float32Array(120);
   const lowSamples = new Float32Array(120);
   let normalCursor = 0;
@@ -1244,6 +1357,21 @@ function createDeskScene(
   return {
     sync(): void {
       if (memory.buffer !== boundBuffer) bindWasmViews();
+      const dragNow = performance.now();
+      const dragDelta = Math.min(0.05, Math.max(0, (dragNow - lastDragSyncTime) / 1000));
+      lastDragSyncTime = dragNow;
+      if (smoothMoveIndex >= 0) {
+        const blend = 1 - Math.exp(-20 * dragDelta);
+        smoothX += (targetX - smoothX) * blend;
+        smoothZ += (targetZ - smoothZ) * blend;
+        const settled = Math.abs(targetX - smoothX) + Math.abs(targetZ - smoothZ) < 0.002;
+        if (settled) {
+          smoothX = targetX;
+          smoothZ = targetZ;
+        }
+        simulation.moveObject(smoothMoveIndex, smoothX, smoothZ);
+        if (settled && dragIndex < 0 && heldIndex < 0) smoothMoveIndex = -1;
+      }
       const terrainPosition = terrainGeometry.getAttribute("position") as THREE.BufferAttribute;
       const terrainNormal = terrainGeometry.getAttribute("normal") as THREE.BufferAttribute;
       const waterPosition = waterGeometry.getAttribute("position") as THREE.BufferAttribute;
