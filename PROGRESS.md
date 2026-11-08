@@ -24,7 +24,7 @@
 
 ### Verification
 
-- The first GitHub Actions test run exposed two compile errors; those were fixed in the following commit.
-- The next run compiled the Rust crate and passed 12 of 14 tests, including water conservation, edge spilling, groove channeling, parser and interpreter tests. Two lexer tests exposed a stale token count and missing exponent handling; both have now been corrected, and this rerun is pending.
-- Clippy and TypeScript typecheck have not yet completed successfully.
+- The current hosted run passed all 14 Rust tests, including lexer, parser, interpreter, internal water-volume conservation, edge spill and groove channeling.
+- Clippy stopped on one `new_without_default` lint for the simulation type. A `Default` implementation has now been added; the rerun is pending.
+- TypeScript typecheck has not yet completed successfully.
 - Actual Codespace WebGL2 startup and visual quality still need a browser check after rebuilding the container.

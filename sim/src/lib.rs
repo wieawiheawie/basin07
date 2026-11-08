@@ -315,9 +315,17 @@ impl Simulation {
         water::total_volume(&self.water)
     }
 
-    #[wasm_bindgen(js_name = wasmMemory)]
-    pub fn wasm_memory() -> JsValue {
-        wasm_bindgen::memory()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = wasmMemory)]
+pub fn wasm_memory() -> JsValue {
+    wasm_bindgen::memory()
+}
+
+impl Default for Simulation {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
