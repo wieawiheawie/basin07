@@ -10,12 +10,15 @@ use water::{CELL_SIZE, DESK_SIZE, FlowBuffers, GRID_CELLS, GRID_SIZE};
 
 const FIXED_STEP: f32 = 1.0 / 60.0;
 const INITIAL_BOTTLE_VOLUME: f32 = 0.14;
-const ACTION_IDS: [&str; 6] = [
+const INITIAL_BARREL_VOLUME: f32 = 0.75;
+const ACTION_IDS: [&str; 8] = [
     "action.carve",
     "action.uncap",
+    "action.tap",
     "action.tip",
     "action.upright",
     "action.look",
+    "action.help",
     "action.list",
 ];
 
@@ -25,6 +28,18 @@ enum ObjectKind {
     Book,
     Pencil,
     Garden,
+    RoundTable,
+    Stool,
+    Tankard,
+    Mug,
+    BreadBasket,
+    CheeseWheel,
+    Barrel,
+    Crate,
+    Sack,
+    Candle,
+    Lantern,
+    PlankFloor,
 }
 
 struct WorldObject {
@@ -46,6 +61,11 @@ struct Person {
     wetness: f32,
     wander_timer: f32,
     seed: u32,
+    target_x: f32,
+    target_z: f32,
+    seat_target: bool,
+    at_tavern: bool,
+    seated: bool,
 }
 
 #[wasm_bindgen]
@@ -116,14 +136,29 @@ impl Simulation {
                 name: "garden", kind: ObjectKind::Garden, x: 5.0, z: 5.0,
                 cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0,
             },
+            WorldObject { name: "plank_floor_1", kind: ObjectKind::PlankFloor, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "round_table_1", kind: ObjectKind::RoundTable, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 6.85, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 8.35, z: 7.15, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 7.75, z: 8.55, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "tankard_1", kind: ObjectKind::Tankard, x: 7.25, z: 7.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.3 },
+            WorldObject { name: "tankard_2", kind: ObjectKind::Tankard, x: 7.95, z: 7.4, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.4 },
+            WorldObject { name: "mug_1", kind: ObjectKind::Mug, x: 7.65, z: 7.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.15 },
+            WorldObject { name: "bread_basket_1", kind: ObjectKind::BreadBasket, x: 7.0, z: 8.05, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 },
+            WorldObject { name: "cheese_wheel_1", kind: ObjectKind::CheeseWheel, x: 8.15, z: 7.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "candle_1", kind: ObjectKind::Candle, x: 7.55, z: 8.2, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "lantern_1", kind: ObjectKind::Lantern, x: 8.55, z: 7.75, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "barrel_1", kind: ObjectKind::Barrel, x: 5.6, z: 7.8, cap_on: true, volume: INITIAL_BARREL_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "crate_1", kind: ObjectKind::Crate, x: 6.15, z: 5.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 },
+            WorldObject { name: "sack_1", kind: ObjectKind::Sack, x: 6.9, z: 5.65, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.3 },
         ];
 
         let people = vec![
-            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, wander_timer: 0.2, seed: 11 },
-            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, wander_timer: 0.5, seed: 23 },
-            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, wander_timer: 0.8, seed: 37 },
-            Person { x: 5.1, z: 5.8, heading: -1.4, wetness: 0.0, wander_timer: 0.1, seed: 47 },
-            Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59 },
+            Person { x: 4.0, z: 4.0, heading: 0.3, wetness: 0.0, wander_timer: 0.2, seed: 11, target_x: 6.85, target_z: 7.7, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 4.7, z: 4.1, heading: 1.9, wetness: 0.0, wander_timer: 0.5, seed: 23, target_x: 8.35, target_z: 7.15, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 5.8, z: 4.2, heading: 2.7, wetness: 0.0, wander_timer: 0.8, seed: 37, target_x: 7.75, target_z: 8.55, seat_target: true, at_tavern: false, seated: false },
+            Person { x: 5.1, z: 5.8, heading: -1.4, wetness: 0.0, wander_timer: 0.1, seed: 47, target_x: 6.45, target_z: 8.75, seat_target: false, at_tavern: false, seated: false },
+            Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59, target_x: 8.9, target_z: 8.45, seat_target: false, at_tavern: false, seated: false },
         ];
 
         let mut simulation = Simulation {
@@ -134,7 +169,7 @@ impl Simulation {
             terrain_normals: vec![0.0; GRID_CELLS * 3],
             water_positions: vec![0.0; GRID_CELLS * 3],
             water_normals: vec![0.0; GRID_CELLS * 3],
-            people_buffer: vec![0.0; people.len() * 4],
+            people_buffer: vec![0.0; people.len() * 5],
             objects,
             people,
             glossary: Glossary::default(),
@@ -275,6 +310,18 @@ impl Simulation {
                 ObjectKind::Book => "book",
                 ObjectKind::Pencil => "pencil",
                 ObjectKind::Garden => "garden",
+                ObjectKind::RoundTable => "round_table",
+                ObjectKind::Stool => "stool",
+                ObjectKind::Tankard => "tankard",
+                ObjectKind::Mug => "mug",
+                ObjectKind::BreadBasket => "bread_basket",
+                ObjectKind::CheeseWheel => "cheese_wheel",
+                ObjectKind::Barrel => "barrel",
+                ObjectKind::Crate => "crate",
+                ObjectKind::Sack => "sack",
+                ObjectKind::Candle => "candle",
+                ObjectKind::Lantern => "lantern",
+                ObjectKind::PlankFloor => "plank_floor",
             })
             .unwrap_or("")
             .to_owned()
@@ -350,6 +397,13 @@ impl Simulation {
                     add_water_volume(water, pour_x, pour_z, amount);
                 }
             }
+            for object in objects.iter_mut().filter(|object| object.kind == ObjectKind::Barrel && !object.cap_on) {
+                if object.volume > 0.0 {
+                    let amount = (0.05 * dt).min(object.volume);
+                    object.volume = (object.volume - amount).max(0.0);
+                    add_water_volume(water, object.x, object.z, amount);
+                }
+            }
         }
 
         self.flow.step(&self.height, &mut self.water, dt, true, 0.00016);
@@ -409,11 +463,36 @@ impl Simulation {
                     ObjectKind::Book => "closed book".to_owned(),
                     ObjectKind::Pencil => "wooden pencil".to_owned(),
                     ObjectKind::Garden => "soil and small sprouts".to_owned(),
+                    ObjectKind::RoundTable => "round wooden tavern table".to_owned(),
+                    ObjectKind::Stool => "tavern stool".to_owned(),
+                    ObjectKind::Tankard => "empty tankard".to_owned(),
+                    ObjectKind::Mug => "empty mug".to_owned(),
+                    ObjectKind::BreadBasket => "bread basket".to_owned(),
+                    ObjectKind::CheeseWheel => "cheese wheel".to_owned(),
+                    ObjectKind::Barrel => format!(
+                        "rain barrel, tap {}, {:.0}% full",
+                        if object.cap_on { "closed" } else { "open" },
+                        (object.volume / INITIAL_BARREL_VOLUME * 100.0).clamp(0.0, 100.0)
+                    ),
+                    ObjectKind::Crate => "wooden storage crate".to_owned(),
+                    ObjectKind::Sack => "cloth storage sack".to_owned(),
+                    ObjectKind::Candle => "lit candle".to_owned(),
+                    ObjectKind::Lantern => "warm lantern".to_owned(),
+                    ObjectKind::PlankFloor => "plank-floor tavern platform".to_owned(),
                 };
                 Ok(format!(
                     "{}: {}, position ({:.1}, {:.1}).",
                     object.name, state, object.x, object.z
                 ))
+            }
+            Command::Help => {
+                self.discover_action("action.help");
+                let commands = self.discovered.iter()
+                    .filter(|id| id.starts_with("action."))
+                    .map(|id| self.glossary.word_for(id))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Ok(format!("Commands discovered so far: {commands}."))
             }
             Command::Uncap(name) => {
                 let object_name = {
@@ -434,6 +513,25 @@ impl Simulation {
                 };
                 self.discover_action("action.uncap");
                 Ok(format!("The cap comes free from {object_name} and rests beside it."))
+            }
+            Command::Tap(name) => {
+                let object_name = {
+                    let object = self.objects.iter_mut().find(|object| object.name == name)
+                        .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
+                    if object.kind != ObjectKind::Barrel {
+                        return Err(format!("{} is not a rain barrel. Try tap barrel_1.", object.name));
+                    }
+                    if !object.cap_on {
+                        return Ok(format!("{} is already tapped and flowing.", object.name));
+                    }
+                    if object.volume <= 0.0001 {
+                        return Err(format!("{} is empty and has no water left to release.", object.name));
+                    }
+                    object.cap_on = false;
+                    object.name
+                };
+                self.discover_action("action.tap");
+                Ok(format!("The tap on {object_name} opens. Water begins to flow onto the desk."))
             }
             Command::Tip { object: name, toward } => {
                 let target = if let Some(toward) = toward {
@@ -545,7 +643,7 @@ impl Simulation {
     }
 
     fn update_people(&mut self, dt: f32) {
-        let (people, water, objects) = (&mut self.people, &self.water, &self.objects);
+        let (people, water) = (&mut self.people, &self.water);
         for person in people.iter_mut() {
             let gx = (person.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
             let gz = (person.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
@@ -553,53 +651,38 @@ impl Simulation {
             if current_water > 0.035 {
                 person.wetness = 1.0;
                 person.heading += std::f32::consts::PI * 0.72;
-                person.wander_timer = 0.0;
             } else {
                 person.wetness = (person.wetness - dt * 0.25).max(0.0);
+            }
+
+            if !person.at_tavern {
+                let dx = person.target_x - person.x;
+                let dz = person.target_z - person.z;
+                let distance = (dx * dx + dz * dz).sqrt();
+                if distance <= 0.12 {
+                    person.x = person.target_x;
+                    person.z = person.target_z;
+                    person.at_tavern = true;
+                    person.seated = person.seat_target;
+                    continue;
+                }
+                person.heading = dz.atan2(dx);
+                let travel = (0.42 * dt).min(distance);
+                person.x += person.heading.cos() * travel;
+                person.z += person.heading.sin() * travel;
+                continue;
+            }
+
+            if person.seated {
+                continue;
             }
 
             person.wander_timer -= dt;
             if person.wander_timer <= 0.0 {
                 person.seed = person.seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                let jitter = (person.seed as f32 / u32::MAX as f32 - 0.5) * 1.2;
-                person.heading += jitter;
-                person.wander_timer = 0.8 + (person.seed % 100) as f32 / 140.0;
+                person.heading += (person.seed as f32 / u32::MAX as f32 - 0.5) * 0.7;
+                person.wander_timer = 1.5 + (person.seed % 100) as f32 / 90.0;
             }
-
-            let mut best_heading = person.heading;
-            let mut best_score = f32::INFINITY;
-            for turn in [-1.1_f32, -0.55, 0.0, 0.55, 1.1] {
-                let heading = person.heading + turn;
-                let next_x = (person.x + heading.cos() * 0.24 * dt).clamp(0.2, 9.8);
-                let next_z = (person.z + heading.sin() * 0.24 * dt).clamp(0.2, 9.8);
-                let nx = (next_x / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
-                let nz = (next_z / DESK_SIZE * (GRID_SIZE as f32 - 1.0)).round() as usize;
-                let wet_penalty = water[nz.min(GRID_SIZE - 1) * GRID_SIZE + nx.min(GRID_SIZE - 1)] * 18.0;
-                let mut obstacle_penalty = 0.0;
-                for object in objects.iter().filter(|object| object.kind != ObjectKind::Pencil) {
-                    let ox = next_x - object.x;
-                    let oz = next_z - object.z;
-                    let distance = (ox * ox + oz * oz).sqrt();
-                    let clearance = match object.kind {
-                        ObjectKind::Bottle => 0.48,
-                        ObjectKind::Book => 0.58,
-                        ObjectKind::Garden => 0.76,
-                        ObjectKind::Pencil => 0.12,
-                    };
-                    if distance < clearance {
-                        obstacle_penalty += (clearance - distance) * 18.0;
-                    }
-                }
-                let turn_penalty = turn.abs() * 0.08;
-                let score = wet_penalty + obstacle_penalty + turn_penalty;
-                if score < best_score {
-                    best_score = score;
-                    best_heading = heading;
-                }
-            }
-            person.heading = best_heading;
-            person.x = (person.x + person.heading.cos() * 0.24 * dt).clamp(0.2, 9.8);
-            person.z = (person.z + person.heading.sin() * 0.24 * dt).clamp(0.2, 9.8);
         }
     }
 
@@ -610,6 +693,7 @@ impl Simulation {
             self.people_buffer[base + 1] = person.z;
             self.people_buffer[base + 2] = person.heading;
             self.people_buffer[base + 3] = person.wetness;
+            self.people_buffer[base + 4] = if person.seated { 1.0 } else { 0.0 };
         }
     }
 
@@ -711,6 +795,8 @@ mod tests {
         for (id, word) in [
             ("action.carve", "carve"),
             ("action.uncap", "uncap"),
+            ("action.tap", "tap"),
+            ("action.help", "help"),
             ("action.tip", "tip"),
             ("action.upright", "upright"),
             ("action.look", "look"),
@@ -745,6 +831,32 @@ mod tests {
             simulation.tick(1.0 / 60.0);
         }
         assert!(simulation.last_result.contains("cap on"));
+    }
+
+    #[test]
+    fn barrel_tap_transfers_water_without_creating_volume() {
+        let mut simulation = ready_simulation();
+        let barrel_index = simulation.objects.iter().position(|object| object.kind == ObjectKind::Barrel).unwrap();
+        let source_before = simulation.objects[barrel_index].volume;
+        let grid_before = water::total_volume(&simulation.water);
+
+        simulation.execute(Command::Tap("barrel_1".to_owned())).unwrap();
+        simulation.fixed_step(FIXED_STEP);
+
+        let source_after = simulation.objects[barrel_index].volume;
+        let grid_after = water::total_volume(&simulation.water);
+        assert!(grid_after > grid_before);
+        assert!(((source_before + grid_before) - (source_after + grid_after)).abs() < 0.00001);
+    }
+
+    #[test]
+    fn help_lists_discovered_commands() {
+        let mut simulation = ready_simulation();
+        simulation.discover_action("action.tap");
+        let message = simulation.execute(Command::Help).unwrap();
+        assert!(message.contains("help"));
+        assert!(message.contains("tap"));
+        assert!(message.contains("list"));
     }
 
     #[test]

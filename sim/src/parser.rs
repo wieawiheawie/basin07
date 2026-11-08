@@ -21,6 +21,14 @@ impl Glossary {
             .map(|(id, _)| id.as_str())
     }
 
+    pub fn closest_action_word<'a>(&'a self, input: &str) -> Option<&'a str> {
+        self.entries
+            .iter()
+            .filter(|(id, _)| id.starts_with("action."))
+            .min_by_key(|(_, word)| edit_distance(input, word))
+            .map(|(_, word)| word.as_str())
+    }
+
     pub fn word_for<'a>(&'a self, action_id: &'a str) -> &'a str {
         self.entries
             .iter()
@@ -28,6 +36,23 @@ impl Glossary {
             .map(|(_, word)| word.as_str())
             .unwrap_or(action_id)
     }
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let right_chars: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right_chars.len()).collect();
+    let mut current = vec![0; right_chars.len() + 1];
+    for (row, left_char) in left.chars().enumerate() {
+        current[0] = row + 1;
+        for (column, right_char) in right_chars.iter().enumerate() {
+            let substitution = previous[column] + usize::from(left_char != *right_char);
+            current[column + 1] = (previous[column + 1] + 1)
+                .min(current[column] + 1)
+                .min(substitution);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right_chars.len()]
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,12 +79,14 @@ pub enum Command {
         width: f32,
     },
     Uncap(String),
+    Tap(String),
     Tip {
         object: String,
         toward: Option<PositionExpr>,
     },
     Upright(String),
     Look(String),
+    Help,
     List,
 }
 
@@ -85,15 +112,20 @@ impl Parser<'_> {
         let action_id = self
             .glossary
             .id_for(&action_word)
-            .ok_or_else(|| format!("I don't recognise '{action_word}'. Try a word from the prompt suggestions."))?
+            .ok_or_else(|| {
+                let suggestion = self.glossary.closest_action_word(&action_word).unwrap_or("help");
+                format!("I don't recognise '{action_word}'. Did you mean '{suggestion}'?")
+            })?
             .to_owned();
 
         let command = match action_id.as_str() {
             "action.carve" => self.carve()?,
             "action.uncap" => Command::Uncap(self.word("Tell me which object to uncap.")?),
+            "action.tap" => Command::Tap(self.word("Tell me which barrel to tap.")?),
             "action.tip" => self.tip()?,
             "action.upright" => Command::Upright(self.word("Tell me which object to stand upright.")?),
             "action.look" => Command::Look(self.word("Tell me what you want to look at.")?),
+            "action.help" => Command::Help,
             "action.list" => Command::List,
             _ => return Err(format!("'{action_word}' is not an action in this glossary.")),
         };
@@ -239,6 +271,8 @@ mod tests {
             ("action.tip", "tip"),
             ("action.upright", "upright"),
             ("action.look", "look"),
+            ("action.help", "help"),
+            ("action.tap", "tap"),
             ("action.list", "list"),
             ("syntax.from", "from"),
             ("syntax.to", "to"),
@@ -301,5 +335,18 @@ mod tests {
     fn rejects_missing_keywords_and_out_of_range_coordinates() {
         assert!(parse("carve (2,3) to (8,3)", &glossary()).is_err());
         assert!(parse("carve from (12,3) to (8,3)", &glossary()).is_err());
+    }
+
+    #[test]
+    fn unknown_commands_suggest_the_closest_real_action() {
+        let error = parse("chnage", &glossary()).unwrap_err();
+        assert!(error.contains("Did you mean"));
+        assert!(error.contains("carve") || error.contains("help") || error.contains("list"));
+    }
+
+    #[test]
+    fn parses_tap_and_help_commands() {
+        assert_eq!(parse("tap barrel_1", &glossary()).unwrap(), Command::Tap("barrel_1".to_owned()));
+        assert_eq!(parse("help", &glossary()).unwrap(), Command::Help);
     }
 }
