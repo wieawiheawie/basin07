@@ -29,6 +29,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
             '-' | '0'..='9' | '.' => {
                 let mut number = String::new();
                 number.push(ch);
+
                 while let Some((_, next)) = chars.peek() {
                     if next.is_ascii_digit() || *next == '.' {
                         number.push(*next);
@@ -37,6 +38,31 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                         break;
                     }
                 }
+
+                if matches!(chars.peek(), Some((_, 'e' | 'E'))) {
+                    number.push(chars.next().expect("peeked exponent marker").1);
+
+                    if matches!(chars.peek(), Some((_, '+' | '-'))) {
+                        number.push(chars.next().expect("peeked exponent sign").1);
+                    }
+
+                    let exponent_start = number.len();
+                    while let Some((_, next)) = chars.peek() {
+                        if next.is_ascii_digit() {
+                            number.push(*next);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    if number.len() == exponent_start {
+                        return Err(format!(
+                            "I couldn't read the exponent in '{number}' at character {}.",
+                            offset + 1
+                        ));
+                    }
+                }
+
                 let value = number
                     .parse::<f32>()
                     .map_err(|_| format!("I couldn't read the number '{number}' at character {}.", offset + 1))?;
@@ -74,18 +100,21 @@ mod tests {
     #[test]
     fn lexes_words_numbers_and_coordinates() {
         let tokens = lex("carve from (2.5, 3) to (8, -1)").unwrap();
-        assert_eq!(tokens.len(), 11);
+        assert_eq!(tokens.len(), 13);
         assert_eq!(tokens[0].kind, TokenKind::Word("carve".to_owned()));
         assert_eq!(tokens[2].kind, TokenKind::LeftParen);
         assert_eq!(tokens[3].kind, TokenKind::Number(2.5));
         assert_eq!(tokens[5].kind, TokenKind::Number(3.0));
-        assert_eq!(tokens[10].kind, TokenKind::RightParen);
+        assert_eq!(tokens[12].kind, TokenKind::RightParen);
     }
 
     #[test]
-    fn rejects_unknown_characters_and_non_finite_numbers() {
+    fn accepts_scientific_notation_and_rejects_invalid_numbers() {
+        assert_eq!(lex("look 1.25e-2").unwrap()[1].kind, TokenKind::Number(0.0125));
         assert!(lex("look bottle!").is_err());
+        assert!(lex("look 1.2.3").is_err());
         assert!(lex("tip bottle 1e999").is_err());
+        assert!(lex("look 4e+").is_err());
     }
 
     #[test]

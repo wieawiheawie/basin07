@@ -97,7 +97,7 @@ export function setupConsole(simulation: Simulation) {
       } else if (actionId === "action.uncap") {
         example.textContent = word + " bottle_1";
       } else if (actionId === "action.tip") {
-        example.textContent = word + " bottle_1 " + syntax("syntax.toward") + " east";
+        example.textContent = word + " bottle_1 " + syntax("syntax.toward") + " " + syntax("direction.east");
       } else if (actionId === "action.upright" || actionId === "action.look") {
         example.textContent = word + " bottle_1";
       } else {

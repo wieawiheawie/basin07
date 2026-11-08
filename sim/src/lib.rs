@@ -412,7 +412,11 @@ impl Simulation {
                     let object = self.objects.iter_mut().find(|object| object.name == name)
                         .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
                     if object.kind != ObjectKind::Bottle {
-                        return Err(format!("{} doesn't have a cap. Try uncap bottle_1 or uncap bottle_2.", object.name));
+                        let uncap_word = self.glossary.word_for("action.uncap");
+                        return Err(format!(
+                            "{} doesn't have a cap. Try {} bottle_1 or {} bottle_2.",
+                            object.name, uncap_word, uncap_word
+                        ));
                     }
                     if !object.cap_on {
                         return Ok(format!("{} is already uncapped.", object.name));
@@ -429,6 +433,7 @@ impl Simulation {
                 } else {
                     None
                 };
+                let uncap_word = self.glossary.word_for("action.uncap").to_owned();
                 let object_name = {
                     let object = self.objects.iter_mut().find(|object| object.name == name)
                         .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
@@ -436,7 +441,10 @@ impl Simulation {
                         return Err(format!("{} is not a bottle, so it cannot pour.", object.name));
                     }
                     if object.cap_on {
-                        return Err(format!("{} still has its cap on. Try: uncap {}.", object.name, object.name));
+                        return Err(format!(
+                            "{} still has its cap on. Try: {} {}.",
+                            object.name, uncap_word, object.name
+                        ));
                     }
                     if object.volume <= 0.0001 {
                         return Err(format!("{} is empty. It has no water left to pour.", object.name));
