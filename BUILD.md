@@ -8,7 +8,7 @@ Run the development server without `--release`:
 trunk serve
 ```
 
-The `index.html` Rust asset selects Cargo's `wasm-dev` profile for development. It enables incremental compilation, omits debug information, compiles the BASIN 07 client crate at `opt-level = 1`, and compiles external dependencies at `opt-level = 3` once. Cargo's package-wide dependency override also takes precedence for matching build/proc-macro crates, so this may increase cold build time; the Codespace benchmark is needed to validate the trade-off. Cargo is capped at two parallel jobs.
+The `index.dev.html` Rust asset selects Cargo's `wasm-dev` profile and Bevy's `dev-debug` ECS-name feature for development. Release and distribution HTML targets omit `dev-debug`. It enables incremental compilation, omits debug information, compiles the BASIN 07 client crate at `opt-level = 1`, and compiles external dependencies at `opt-level = 3` once. Cargo's package-wide dependency override also takes precedence for matching build/proc-macro crates, so this may increase cold build time; the Codespace benchmark is needed to validate the trade-off. Cargo is capped at two parallel jobs.
 
 Trunk does not run `wasm-opt` in this dev path. The `data-wasm-opt="z"` setting is only applied in release mode. Dev builds skip release minification and content hashing, and Trunk's watcher ignores Cargo/build output directories. Codespaces post-create fetches dependencies and primes the same WASM profile.
 
@@ -18,6 +18,7 @@ Useful quick commands:
 
 ```bash
 cargo check-web
+cargo test-client
 cargo test-core
 cargo validate-core
 ```
@@ -29,7 +30,7 @@ The headless commands do not enable Bevy, so they work in a Codespace with no di
 Normal optimized WebGL2 release:
 
 ```bash
-trunk build --release
+trunk --config Trunk.release.toml build --release
 ```
 
 Final distribution build (thin LTO, separate output directory):
@@ -38,7 +39,7 @@ Final distribution build (thin LTO, separate output directory):
 trunk --config Trunk.dist.toml build --release
 ```
 
-These commands are intentionally slower than `trunk serve`. The normal release uses the existing memory-light `[profile.release]`; the final distribution uses `[profile.dist]`, which inherits release and enables thin LTO. `wasm-opt -Oz` is limited to release builds.
+These commands are intentionally slower than `trunk serve`. The normal release uses the existing memory-light `[profile.release]`; the final distribution uses `[profile.dist]`, which inherits release and enables thin LTO. Both release HTML targets omit Bevy's `dev-debug` feature. `wasm-opt -Oz` is limited to release builds.
 
 ## Native and headless development
 
@@ -110,4 +111,4 @@ No speedup or target-memory improvement is claimed until this benchmark has run 
 - **Dependency pruning:** Bevy already used `default-features = false` and an explicit feature list; audio, gamepad, animation, glTF and scene defaults were not enabled. The unused `web-sys/HtmlElement` feature was removed. No Rust crate was removed.
 - **Duplicate versions:** the lockfile contains transitive versions across platform-specific and semver dependency paths. Setup reports `cargo tree -d`, the WASM-target duplicate graph and `cargo machete`; no semver unification was forced without evidence the duplicate versions coexist in the WASM graph and can be safely unified.
 - **Workspace split:** deferred until local measurements show whether the client crate remains the edit-loop bottleneck. Splitting crates without measured benefit would add refactor risk and invalidate warmed build outputs.
-- **CI:** remains a cheap content/format/test/validator/WASM-check pipeline. It does not run the full release or dist build.
+- **ECS conflict regression test:** CI runs the complete `BasinGamePlugin` inside `MinimalPlugins` and advances three frames to catch B0001 query conflicts. CI does not run the full release or dist build.

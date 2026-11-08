@@ -5,19 +5,17 @@
 ## Current status — 2026-11-08
 
 - Repository: https://github.com/wieawiheawie/basin07, branch `main`.
-- Milestone 1 scene and Trunk release artifact remain; the user's Codespace browser smoke test is still pending.
-- Build iteration changes are committed: custom incremental `wasm-dev` profile; Trunk dev profile selection; release-only minification/wasm-opt; watch excludes for build outputs; Cargo two-job cap and incremental cache; Codespaces post-create fetch + warm compile; prebuilt Trunk/wasm-bindgen CLI; native clang/lld; and a cold/incremental benchmark script. The dependency opt-level override also applies to matching build/proc-macro crates under Cargo's package-override precedence, so cold compile cost needs measuring.
-- `[profile.release]` remains the specified memory-light release profile; `[profile.dist]` remains thin-LTO only.
-- Bevy remains `default-features = false` with explicit used features. Audio, gamepad, animation, glTF and scene defaults are not enabled. Removed only the unused `web-sys/HtmlElement` feature; no Rust crate was removed.
-- Codespaces setup installs Trunk 0.22.1 and the wasm-bindgen CLI version matching Cargo.lock, runs `cargo tree -d`, WASM duplicate-tree inspection and `cargo machete`, fetches dependencies and primes the `wasm-dev` target.
-- Last fully verified quick CI is commit `75a812e21c949411ecabdeccb8b9572f6c886e05`, run [#50](https://github.com/wieawiheawie/basin07/actions/runs/42460120938): content validator, formatting, all 19 Rust tests, headless validator passed.
-- Later optimization commits are not considered green until their own Actions checks pass.
-- Historical hosted-runner baseline from run #48: release WASM compile 5m30; Trunk source installation about 5m26; release Trunk packaging about 62s; regular release WASM 30,131,532 raw / 9,006,989 gzip.
-- **No target Codespace before/after cold build, one-line incremental build, or peak RSS has been measured yet.** Run `bash scripts/bench-build.sh` in the actual 2-core/7.8 GB Codespace; `BUILD.md` documents the protocol and clearly separates hosted-runner observations from target measurements.
+- Milestone 1 was confirmed running in Chrome/WebGL2 on Intel ADL-N; the first-frame B0001 panic was traced to overlapping mutable queries in render and HUD systems.
+- Fixed overlapping mutable material queries in `sync_scene_materials` using reciprocal `Without` filters for GroundVisual, TileVisual and ServiceVisual.
+- Fixed mutable `Text` queries in `update_hud` with reciprocal `Without` filters for HudText and OverlayText.
+- Added `dev-debug = ["client", "bevy/debug"]`; only the development HTML target enables this feature so panic diagnostics include ECS system/component names without inflating release/dist builds.
+- Added a native headless app smoke test which adds `MinimalPlugins`, `AssetPlugin`, mesh/material asset registries and input resources, starts `BasinGamePlugin`, then calls `app.update()` three times. CI runs it with client + desktop + dev-debug features.
+- Fast browser serving now uses `index.dev.html`; normal release uses `Trunk.release.toml` and release HTML without ECS debug names; final dist remains thin-LTO with no debug names.
+- Query fix commit: `f493329988de1083294e08c218c204af81bf9239`. Dev profile/config commit: `a0c7b9d5f89ac9be79d490be934ae567f6c386ce`. CI/setup commit: `8bde9d1854256aec6ed2aedb78919841ba8de270`.
+- The next CI run must confirm the new native headless Bevy test and WASM dev-debug check; do not treat earlier core-only tests as proof of the query fix.
+- Build-speed target measurements (2-core/7.8 GB Codespace cold build, one-line incremental rebuild, peak RSS) remain pending. Run `bash scripts/bench-build.sh` after setup. No speedup is claimed until actual output is captured.
 
 ## Exact Codespace commands
-
-After pulling latest `main`:
 
 ```bash
 git pull --ff-only origin main
@@ -25,26 +23,35 @@ bash .devcontainer/setup.sh
 trunk serve
 ```
 
-Open forwarded port **8080**. For measured cold/incremental build performance, stop Trunk first and run:
+Open forwarded port **8080** and verify the 3D scene renders without a first-frame panic. Run the native headless regression before launching the browser:
+
+```bash
+cargo test-client
+```
+
+For a cold/incremental build and peak-memory benchmark, stop Trunk and run:
 
 ```bash
 bash scripts/bench-build.sh
 ```
 
-Use `trunk build --release` for the regular optimized release, and `trunk --config Trunk.dist.toml build --release` for the final thin-LTO distribution. Do not add `--release` to the everyday dev loop.
+Release commands (without ECS debug names):
 
-## Build optimization tracker
+```bash
+trunk --config Trunk.release.toml build --release
+trunk --config Trunk.dist.toml build --release
+```
 
-- [x] Dedicated `wasm-dev` profile: client opt-level 1, dependencies opt-level 3, debug info off, incremental on.
-- [x] Trunk dev asset selects `wasm-dev`; release-only wasm-opt/minification remain out of `trunk serve`.
-- [x] Trunk ignores target/output directories while watching.
-- [x] Codespaces post-create installs prebuilt tools, audits dependencies, fetches crates and warms the wasm target.
-- [x] CI caches Cargo artifacts and remains limited to validators, formatting, tests, duplicate-dependency view and WASM check.
-- [x] Native Linux linker selects clang/lld; WebAssembly uses Rust's bundled rust-lld.
-- [x] Benchmark script records cold/warm one-line build time, peak RSS and WASM raw/gzip sizes.
-- [ ] Run benchmark on the actual Codespace and enter measured values in `BUILD.md`.
-- [ ] Review actual `cargo tree -d`, WASM duplicate graph and cargo-machete output; unify/remove only when safely proven.
-- [ ] Consider a sim/client workspace split only if measured incremental results show a meaningful benefit.
+## Milestone and build tracker
+
+- [x] Milestone 1 interactive scene user-confirmed running in Chrome/WebGL2.
+- [x] Diagnose/fix render material and HUD text B0001 conflicts.
+- [x] Enable Bevy ECS diagnostic names only in the fast development target.
+- [x] Add native headless `App` test for the full game plugin.
+- [ ] Verify the query fix, native test and dev-debug WASM check via current CI.
+- [ ] Re-run Chrome/WebGL2 after pulling the fix.
+- [ ] Measure Codespace cold build, one-line incremental rebuild and peak RSS.
+- [ ] Continue build-speed optimisation from measured local results.
 
 ## Known modelling limitations (not build blockers)
 
