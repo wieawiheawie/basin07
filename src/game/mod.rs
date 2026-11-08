@@ -190,3 +190,33 @@ pub(crate) fn load(session: &mut GameSession) -> Result<(), String> {
     session.plant = plant;
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::{
+        asset::{AssetApp, AssetPlugin},
+        input::ButtonInput,
+        mesh::Mesh,
+        pbr::StandardMaterial,
+        prelude::{KeyCode, MinimalPlugins, MouseButton},
+    };
+
+    #[test]
+    fn game_systems_initialize_and_run_headless_without_query_conflicts() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<ButtonInput<MouseButton>>();
+        app.add_plugins(BasinGamePlugin);
+
+        // Startup builds the scene/HUD; subsequent updates exercise every
+        // gameplay, camera, material, connection and HUD system without a GPU.
+        for _ in 0..3 {
+            app.update();
+        }
+    }
+}

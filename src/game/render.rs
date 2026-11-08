@@ -293,9 +293,20 @@ fn machine_material_index(
 pub fn sync_scene_materials(
     graphics: Res<GraphicsSettings>,
     assets: Res<SceneAssets>,
-    mut ground: Query<&mut MeshMaterial3d<StandardMaterial>, With<GroundVisual>>,
-    mut tiles: Query<&mut MeshMaterial3d<StandardMaterial>, With<TileVisual>>,
-    mut services: Query<(&ServiceVisual, &mut MeshMaterial3d<StandardMaterial>)>,
+    // These queries all mutate MeshMaterial3d. Explicit reciprocal Without
+    // filters make their entity sets provably disjoint to Bevy's access checker.
+    mut ground: Query<
+        &mut MeshMaterial3d<StandardMaterial>,
+        (With<GroundVisual>, Without<TileVisual>, Without<ServiceVisual>),
+    >,
+    mut tiles: Query<
+        &mut MeshMaterial3d<StandardMaterial>,
+        (With<TileVisual>, Without<GroundVisual>, Without<ServiceVisual>),
+    >,
+    mut services: Query<
+        (&ServiceVisual, &mut MeshMaterial3d<StandardMaterial>),
+        (Without<GroundVisual>, Without<TileVisual>),
+    >,
     mut directional_lights: Query<&mut DirectionalLight, With<SceneDirectionalLight>>,
     mut point_lights: Query<&mut PointLight, With<ScenePointLight>>,
 ) {

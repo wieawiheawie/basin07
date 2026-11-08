@@ -125,9 +125,11 @@ pub fn setup_hud(mut commands: Commands) {
 pub fn update_hud(
     session: Res<GameSession>,
     graphics: Res<GraphicsSettings>,
-    mut hud: Query<&mut Text, With<HudText>>,
+    // Both queries mutate Text. The reciprocal filters prevent overlapping
+    // access if an entity ever gains more than one HUD marker component.
+    mut hud: Query<&mut Text, (With<HudText>, Without<OverlayText>)>,
     mut overlay: Query<&mut Visibility, With<OverlayPanel>>,
-    mut overlay_text: Query<&mut Text, With<OverlayText>>,
+    mut overlay_text: Query<&mut Text, (With<OverlayText>, Without<HudText>)>,
 ) {
     // UI text changes on input or simulation ticks (2 Hz), not every render frame.
     if !session.is_changed() && !graphics.is_changed() {
