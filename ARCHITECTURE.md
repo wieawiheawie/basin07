@@ -32,12 +32,10 @@ Bevy 0.20 was released on 8 October 2026; Bevy 0.20.1 is the package version pin
 
 ## 3. Build profiles and commands
 
-Install a Rust toolchain at or above the Bevy MSRV, plus the WASM target and Trunk:
+New Codespaces use `.devcontainer/setup.sh` to install the Rust/WASM target, prebuilt Trunk and lockfile-matched wasm-bindgen CLI, audit dependencies, fetch crates and prime the `wasm-dev` target. To re-run that setup manually:
 
 ```bash
-rustup update stable
-rustup target add wasm32-unknown-unknown
-cargo install trunk --locked
+bash .devcontainer/setup.sh
 ```
 
 Fast browser iteration uses the incremental `wasm-dev` Cargo profile:
@@ -71,7 +69,7 @@ cargo test --no-default-features --lib
 cargo run --no-default-features --bin basin-validator -- --seeds 256
 ```
 
-GitHub Actions run #48 verified the 19 Rust tests, Python content/economy validator, Rust headless validator, WASM `cargo check`, WASM release compile, Trunk release packaging and thin-LTO distribution packaging. The user's Codespace is a separate 7.8 GB/no-swap environment; run `trunk serve --release` there before claiming the target memory ceiling or browser runtime is confirmed.
+GitHub Actions run #48 verified the 19 Rust tests, Python content/economy validator, Rust headless validator, WASM `cargo check`, WASM release compile, Trunk release packaging and thin-LTO distribution packaging. The user's Codespace is a separate 7.8 GB/no-swap environment; run `trunk serve` there before claiming the target memory ceiling or browser runtime is confirmed.
 
 ## 4. Rhai controller integration and sandbox
 
