@@ -92,9 +92,7 @@ pub fn handle_input(
             let reagent = session.selected_reagent;
             let reagent_name = crate::sim::catalog::REAGENTS[reagent.index()].name;
             match session.plant.buy_reagent(id, reagent, 0.5) {
-                Ok(()) => {
-                    session.status_message = format!("Ordered 0.5 t {reagent_name}")
-                }
+                Ok(()) => session.status_message = format!("Ordered 0.5 t {reagent_name}"),
                 Err(err) => session.status_message = err,
             }
         } else {
@@ -197,16 +195,13 @@ pub fn handle_input(
         if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
             if let Some(from) = session.pending_connection.take() {
                 let line = session.selected_line;
-                match session.plant.connect(
-                    Endpoint::Machine(from),
-                    Endpoint::Machine(id),
-                    line,
-                ) {
+                match session
+                    .plant
+                    .connect(Endpoint::Machine(from), Endpoint::Machine(id), line)
+                {
                     Ok(()) => {
-                        session.status_message = format!(
-                            "{} connected: #{from} → #{id}",
-                            line.name()
-                        )
+                        session.status_message =
+                            format!("{} connected: #{from} → #{id}", line.name())
                     }
                     Err(error) => session.status_message = format!("Connection refused: {error:?}"),
                 }
