@@ -10,8 +10,12 @@ use crate::sim::{
 use bevy::prelude::*;
 use controls::{handle_input, update_camera};
 use persistence::{load_plant, save_plant};
-use render::{setup_scene, sync_connections, sync_machines};
+use render::{setup_scene, sync_connections, sync_machines, sync_scene_materials};
 use ui::{setup_hud, update_hud};
+
+const SIM_TICK_SECONDS: f64 = 0.5;
+const SIM_TICK_MINUTES: f64 = 0.5;
+const MAX_CATCH_UP_TICKS: usize = 2;
 
 #[derive(Resource)]
 pub struct GameSession {
@@ -24,7 +28,6 @@ pub struct GameSession {
     pub selected_reagent: ReagentId,
     pub seed: u64,
     pub status_message: String,
-    pub sim_accumulator: f64,
 }
 
 impl GameSession {
@@ -39,7 +42,6 @@ impl GameSession {
             selected_reagent: ReagentId::HydrochloricAcid,
             seed,
             status_message: "Press SPACE to open the lease and begin.".into(),
-            sim_accumulator: 0.0,
         }
     }
 }
@@ -50,6 +52,40 @@ pub enum GameMode {
     Playing,
     Paused,
     Report,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GraphicsMode {
+    Low,
+    Standard,
+}
+
+impl GraphicsMode {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Low => "LOW",
+            Self::Standard => "STANDARD",
+        }
+    }
+}
+
+#[derive(Resource)]
+pub(crate) struct GraphicsSettings {
+    pub(crate) mode: GraphicsMode,
+}
+
+impl Default for GraphicsSettings {
+    fn default() -> Self {
+        // Prefer the browser-friendly preset on modest devices.
+        Self {
+            mode: GraphicsMode::Low,
+        }
+    }
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct SimulationClock {
+    accumulator_seconds: f64,
 }
 
 #[derive(Resource)]
@@ -63,7 +99,7 @@ pub(crate) struct CameraRig {
 impl Default for CameraRig {
     fn default() -> Self {
         Self {
-            target: Vec3::new(0.0, 0.0, 0.0),
+            target: Vec3::ZERO,
             yaw: 0.78,
             pitch: 0.72,
             distance: 31.0,
@@ -72,10 +108,13 @@ impl Default for CameraRig {
 }
 
 pub struct BasinGamePlugin;
+
 impl Plugin for BasinGamePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameSession::new(7_071))
             .init_resource::<CameraRig>()
+            .init_resource::<GraphicsSettings>()
+            .init_resource::<SimulationClock>()
             .add_systems(Startup, (setup_scene, setup_hud))
             .add_systems(
                 Update,
@@ -83,31 +122,43 @@ impl Plugin for BasinGamePlugin {
                     handle_input,
                     update_camera,
                     advance_simulation,
+                    sync_scene_materials,
                     sync_machines,
                     sync_connections,
                     update_hud,
-                ),
+                )
+                    .chain(),
             );
     }
 }
 
-fn advance_simulation(time: Res<Time>, mut session: ResMut<GameSession>) {
+fn advance_simulation(
+    time: Res<Time>,
+    mut clock: ResMut<SimulationClock>,
+    mut session: ResMut<GameSession>,
+) {
     if session.mode != GameMode::Playing || session.plant.paused {
         return;
     }
-    // 4 fixed simulation ticks per real second. Rendering remains independent.
-    session.sim_accumulator += time.delta_secs_f64();
-    let mut steps = 0;
-    while session.sim_accumulator >= 0.25 && steps < 8 {
-        session.plant.step(0.25);
-        session.sim_accumulator -= 0.25;
-        steps += 1;
+
+    // Two fixed simulation ticks per second. Rendering stays independent.
+    clock.accumulator_seconds += time.delta_secs_f64();
+    let mut ticks = 0;
+    while clock.accumulator_seconds >= SIM_TICK_SECONDS && ticks < MAX_CATCH_UP_TICKS {
+        session.plant.step(SIM_TICK_MINUTES);
+        clock.accumulator_seconds -= SIM_TICK_SECONDS;
+        ticks += 1;
     }
-    // Deliberately slow simulation after a tab stall instead of a large catch-up burst.
-    if steps == 8 {
-        session.sim_accumulator = session.sim_accumulator.min(0.25);
+
+    // Drop excess backlog after a suspended tab instead of running a large catch-up burst.
+    if ticks == MAX_CATCH_UP_TICKS {
+        clock.accumulator_seconds = clock.accumulator_seconds.min(SIM_TICK_SECONDS);
     }
-    if session.plant.cash <= 0.0 && session.plant.total_products_t() <= 0.0001 {
+
+    if ticks > 0
+        && session.plant.cash <= 0.0
+        && session.plant.total_products_t() <= 0.0001
+    {
         session.mode = GameMode::Report;
         session.plant.paused = true;
         session.status_message = "The site is insolvent. Review the plant, then restart.".into();
@@ -135,10 +186,10 @@ pub(crate) fn kind_from_digit(key: KeyCode) -> Option<MachineKind> {
 pub(crate) fn save(session: &GameSession) -> Result<(), String> {
     save_plant(&session.plant)
 }
+
 pub(crate) fn load(session: &mut GameSession) -> Result<(), String> {
     let plant = load_plant()?;
     session.seed = plant.seed;
     session.plant = plant;
-    session.sim_accumulator = 0.0;
     Ok(())
 }
