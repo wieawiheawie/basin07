@@ -1,4 +1,4 @@
-use super::{CameraRig, GameMode, GameSession, kind_from_digit};
+use super::{CameraRig, GameMode, GameSession, GraphicsMode, GraphicsSettings, SimulationClock, kind_from_digit};
 use crate::sim::catalog::{Endpoint, LineKind, MachineKind, ReagentId, ServicePort};
 use crate::sim::network::GridPos;
 use bevy::prelude::*;
@@ -10,6 +10,8 @@ pub fn handle_input(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut session: ResMut<GameSession>,
+    mut graphics: ResMut<GraphicsSettings>,
+    mut simulation_clock: ResMut<SimulationClock>,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) {
         match session.mode {
@@ -47,6 +49,7 @@ pub fn handle_input(
     if keyboard.just_pressed(KeyCode::KeyR) {
         session.seed = session.seed.wrapping_add(1).max(1);
         *session = GameSession::new(session.seed);
+        simulation_clock.accumulator_seconds = 0.0;
         return;
     }
     if let Some(kind) = [
@@ -82,6 +85,13 @@ pub fn handle_input(
             "Connection type: {}. Shift-click source then destination.",
             session.selected_line.name()
         );
+    }
+    if keyboard.just_pressed(KeyCode::F10) {
+        graphics.mode = match graphics.mode {
+            GraphicsMode::Low => GraphicsMode::Standard,
+            GraphicsMode::Standard => GraphicsMode::Low,
+        };
+        session.status_message = format!("Graphics preset: {}", graphics.mode.label());
     }
     if keyboard.just_pressed(KeyCode::F11) {
         session.selected_reagent = next_reagent(session.selected_reagent);
@@ -137,6 +147,7 @@ pub fn handle_input(
         };
         session.selected_machine = None;
         session.pending_connection = None;
+        simulation_clock.accumulator_seconds = 0.0;
     }
     if keyboard.just_pressed(KeyCode::F7) {
         if let Some(id) = session.selected_machine {
