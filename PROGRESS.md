@@ -1,31 +1,31 @@
 # Deskbound progress
 
-## Milestone 1 — initial implementation
+## Tavern model pass
 
-**Status: lightweight GitHub CI passed previously; WASM-target compile check added and awaiting CI.**
+**Status: implemented in source; CI and target-browser verification are being checked.**
 
-### Present in the source
+- Loads each of the twelve GLB files once through Three.js `GLTFLoader`, caches the source scene, and clones it for each placed object. A marked procedural fallback remains visible if any load fails.
+- Loading progress and fallback counts are shown by the scene's loading status. The model library is rescaled with a single `PACK_SCALE = RESIDENT_HEIGHT / 5` constant and floor-point normalization.
+- Replaces the old blank corner with a plank-floor platform, table, three stools, tableware, food, candle and lantern. Five residents are directed to stool/idle destinations; the resident transform buffer now includes a seated flag.
+- Adds garden-side crate and sack props and a finite rain barrel. `tap barrel_1` opens the barrel and transfers its stored water into the existing water grid. A conservation test checks the source-plus-grid amount over the first simulation step.
+- Uses the pack's named pieces/materials (Wood, Iron, Cloth, Glass, Flame, etc.) for a shared warm grade. The lantern has a flickering warm PointLight; the candle flame is emissive. Normal graphics uses a bloom pass; Low graphics renders directly without bloom, shadows or dust.
+- Object roots retain their simulation names for hover, `list`, and `look`. The help panel describes newly discovered `tap` and `help` commands; parser errors suggest the nearest glossary action.
+- Existing people are rendered with InstancedMesh. The small number of tavern stools/tableware use cached GLB clones rather than creating a large instance batch.
+
+## Existing simulation and known limits
 
 - Rust `deskbound-sim` crate with a 128 × 128 height grid, fixed 60 Hz stepping, water depth grid, bottle state, smallfolk positions, command queue and energy recovery.
-- Hand-written lexer, glossary-driven parser, AST and interpreter for carve, uncap, tip, upright, look and list.
-- Three.js room and desk scene, procedural low-poly books, bottles, pencils, garden sprouts and five tiny people.
-- Terrain and water vertex buffers are owned by Rust and exposed as WebAssembly memory views; the frontend binds Three.js attributes to those views without copying the grid into new arrays each frame.
-- Prompt history, autocomplete, structured command replies and a discovered-words panel.
-- Low-graphics switch disables shadows and dust.
-
-### Explicitly limited or not implemented
-
+- Hand-written lexer, glossary-driven parser, AST and interpreter for carve, uncap, tap, tip, upright, help, look and list.
+- Terrain and water vertex buffers are owned by Rust and exposed as WebAssembly memory views; frontend binds Three.js attributes to those views without copying the grid into new arrays each frame.
+- Prompt history, autocomplete, structured command replies and discovered-word panel.
 - The garden is decorative: sprouts do not grow or consume water.
-- People use simple deterministic steering and water avoidance; they do not have needs, jobs, social behaviour or long-term goals.
-- Water uses a shallow downhill flow approximation. Internal flow conserves volume apart from configured evaporation and edge spilling; it is not a full fluid solver.
-- No external models or textures are included. All milestone-one props are procedural placeholders designed to be replaceable.
+- People have a simple one-off tavern walk target and then sit or idle. They do not have needs, jobs, social behaviour or long-term goals.
+- Water uses a shallow downhill flow approximation. It conserves internal source/grid volume during transfers, apart from configured evaporation and edge spilling; it is not a full fluid solver.
+- Mug contents are not simulated; the mug remains a decorative model.
 - `when` triggers, save files, per-save glossary persistence and scenario progression are not started.
-- Build size and build-time metrics are deliberately blank until measured on the target Codespace.
 
-### Verification
+## Verification notes
 
-- The previous lightweight GitHub Actions run passed all 14 Rust tests, clippy with warnings denied, and TypeScript typecheck.
-- Removed a duplicate WASM-only `wasm_memory` function export. A source scan found no other duplicate Rust function names and only the single intended `cfg(target_arch = "wasm32")` block.
-- CI now installs the `wasm32-unknown-unknown` target and runs `cargo check --target wasm32-unknown-unknown` to catch WASM-only compile errors. The first run after this change is pending.
-- Actual Codespace `npm run dev` startup and browser visual quality still need a user-side check.
-- `BUILD.md` contains no size or timing claims; target Codespace measurements have not been taken.
+- Earlier runs passed Rust tests, Clippy, the WASM target check and TypeScript typecheck.
+- Current model pass includes a browser HUD for scene triangle count and 120-frame averages for Normal and Low requestAnimationFrame intervals. Actual device/browser frame times are not measured by CI and must be read from that HUD on the target Codespace.
+- Build size and target-Codespace cold/incremental build timing are not measured here.
