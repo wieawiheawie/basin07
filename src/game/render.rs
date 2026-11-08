@@ -12,19 +12,19 @@ pub(crate) struct MachineVisual(pub(crate) u32);
 pub(crate) struct PipeVisual(pub(crate) usize);
 
 #[derive(Component)]
-struct GroundVisual;
+pub(crate) struct GroundVisual;
 
 #[derive(Component)]
-struct TileVisual;
+pub(crate) struct TileVisual;
 
 #[derive(Component)]
-struct ServiceVisual(ServicePort);
+pub(crate) struct ServiceVisual(ServicePort);
 
 #[derive(Component)]
-struct SceneDirectionalLight;
+pub(crate) struct SceneDirectionalLight;
 
 #[derive(Component)]
-struct ScenePointLight;
+pub(crate) struct ScenePointLight;
 
 #[derive(Clone)]
 struct MaterialPair {
