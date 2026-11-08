@@ -2,7 +2,7 @@
 
 ## Tavern model pass
 
-**Status: implemented in source; CI and target-browser verification are being checked.**
+**Status: implemented and pushed; GitHub CI passed. Target-browser appearance and live frame measurements still need to be checked in the Codespace/browser.**
 
 - Loads each of the twelve GLB files once through Three.js `GLTFLoader`, caches the source scene, and clones it for each placed object. A marked procedural fallback remains visible if any load fails.
 - Loading progress and fallback counts are shown by the scene's loading status. The model library is rescaled with a single `PACK_SCALE = RESIDENT_HEIGHT / 5` constant and floor-point normalization.
