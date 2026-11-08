@@ -865,6 +865,15 @@ function createDeskScene(
               if (child.userData.proceduralFallback === true) target.remove(child);
             }
             target.add(instance);
+            if (modelId === "candle") {
+              const flame = new THREE.Mesh(
+                new THREE.ConeGeometry(0.045, 0.12, 6),
+                tavernFlame
+              );
+              flame.position.set(0, modelHeight + 0.055, 0);
+              flame.userData.performanceIgnore = true;
+              target.add(flame);
+            }
             if (modelId === "cheese_wheel") {
               const cheese = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.26, 0.26, 0.11, 12),
