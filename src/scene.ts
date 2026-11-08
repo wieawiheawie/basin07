@@ -560,7 +560,9 @@ function createDeskScene(
     else if (kind === "garden") visual = makeGarden();
     else {
       const root = new THREE.Group();
-      root.add(makeTavernFallback(kind));
+      const fallback = makeTavernFallback(kind);
+      fallback.userData.proceduralFallback = true;
+      root.add(fallback);
       visual = { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind };
       if (isTavernModel) {
         const targets = modelTargets.get(kind) ?? [];
@@ -599,7 +601,7 @@ function createDeskScene(
       child.receiveShadow = true;
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       for (const material of materials) {
-        const name = material.name.toLowerCase();
+        const name = (child.name + " " + material.name).toLowerCase();
         if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
           if (name.includes("wood")) material.color.lerp(new THREE.Color("#c58e59"), 0.18);
           else if (name.includes("iron") || name.includes("metal")) material.color.lerp(new THREE.Color("#b18c66"), 0.12);
@@ -638,9 +640,11 @@ function createDeskScene(
         const bounds = new THREE.Box3().setFromObject(source);
         const floorOffset = Number.isFinite(bounds.min.y) ? -bounds.min.y : 0;
         modelCache.set(modelId, source);
+        const cachedSource = modelCache.get(modelId);
+        if (!cachedSource) throw new Error("Model cache insert failed.");
         loaded += 1;
         for (const target of modelTargets.get(modelId) ?? []) {
-          const instance = source.clone(true);
+          const instance = cachedSource.clone(true);
           instance.scale.setScalar(PACK_SCALE);
           instance.position.y += floorOffset * PACK_SCALE;
           instance.traverse((child) => {
@@ -649,8 +653,9 @@ function createDeskScene(
               child.receiveShadow = true;
             }
           });
-          const oldFallback = target.children.slice();
-          for (const child of oldFallback) target.remove(child);
+          for (const child of target.children.slice()) {
+            if (child.userData.proceduralFallback === true) target.remove(child);
+          }
           target.add(instance);
           if (modelId === "lantern") {
             // The lightweight point light is attached to the object root and remains separate from the GLB.
@@ -749,6 +754,9 @@ function createDeskScene(
           simulation.discoverAction("action.tip");
           simulation.discoverAction("action.upright");
           simulation.discoverAction("action.look");
+        } else if (kind === "barrel") {
+          simulation.discoverAction("action.tap");
+          simulation.discoverAction("action.look");
         } else {
           simulation.discoverAction("action.look");
         }
@@ -801,6 +809,18 @@ function createDeskScene(
 
   const timeUniform = waterMaterial.uniforms.uTime as THREE.IUniform<number>;
   let lastPeopleTime = 0;
+  const performanceLabel = document.getElementById("performance-label");
+  const normalSamples = new Float32Array(120);
+  const lowSamples = new Float32Array(120);
+  let normalCursor = 0;
+  let lowCursor = 0;
+  let normalCount = 0;
+  let lowCount = 0;
+  let normalTotal = 0;
+  let lowTotal = 0;
+  let lastFrameTime = 0;
+  let lastMetricsTime = 0;
+  renderer.info.autoReset = false;
 
   return {
     sync(): void {
@@ -841,7 +861,7 @@ function createDeskScene(
       const step = Math.max(0, peopleTime - lastPeopleTime);
       lastPeopleTime = peopleTime;
       for (let index = 0; index < peopleCount; index += 1) {
-        const offset = index * 4;
+        const offset = index * 5;
         const x = peopleView[offset] ?? 0;
         const z = peopleView[offset + 1] ?? 0;
         const heading = peopleView[offset + 2] ?? 0;
@@ -882,8 +902,34 @@ function createDeskScene(
           + Math.sin(time * 7.4 + flicker.phase) * 0.07
           + Math.sin(time * 13.2 + flicker.phase * 1.4) * 0.025;
       }
+      const frameMs = lastFrameTime > 0 ? Math.max(0, (time - lastFrameTime) * 1000) : 0;
+      lastFrameTime = time;
+      if (frameMs > 0) {
+        if (lowGraphics) {
+          lowTotal -= lowSamples[lowCursor] ?? 0;
+          lowSamples[lowCursor] = frameMs;
+          lowTotal += frameMs;
+          lowCursor = (lowCursor + 1) % lowSamples.length;
+          lowCount = Math.min(lowCount + 1, lowSamples.length);
+        } else {
+          normalTotal -= normalSamples[normalCursor] ?? 0;
+          normalSamples[normalCursor] = frameMs;
+          normalTotal += frameMs;
+          normalCursor = (normalCursor + 1) % normalSamples.length;
+          normalCount = Math.min(normalCount + 1, normalSamples.length);
+        }
+      }
+      renderer.info.reset();
       if (lowGraphics) renderer.render(scene, camera);
       else composer.render();
+
+      if (performanceLabel && time - lastMetricsTime >= 0.5) {
+        lastMetricsTime = time;
+        const normal = normalCount ? (normalTotal / normalCount).toFixed(1) + " ms" : "—";
+        const low = lowCount ? (lowTotal / lowCount).toFixed(1) + " ms" : "—";
+        performanceLabel.textContent = "Scene " + renderer.info.render.triangles.toLocaleString() +
+          " tris · Normal " + normal + " · Low " + low;
+      }
     }
   };
 }

@@ -5,9 +5,11 @@ import { getSuggestions, parseReply } from "./command";
 const HELP_TEXT: Record<string, string> = {
   "action.carve": "Make a shallow channel between two coordinates or named objects.",
   "action.uncap": "Remove a bottle cap. The cap stays on the desk.",
+  "action.tap": "Open the rain barrel tap; water flows from the barrel into the desk.",
   "action.tip": "Tip an uncapped bottle; add a target after the toward word to aim it.",
   "action.upright": "Return a bottle to its standing position.",
   "action.look": "Read an object's state and desk coordinates.",
+  "action.help": "List the command words you have discovered so far.",
   "action.list": "List the names of things on the desk."
 };
 
@@ -96,6 +98,8 @@ export function setupConsole(simulation: Simulation) {
           syntax("option.width") + " 0.5";
       } else if (actionId === "action.uncap") {
         example.textContent = word + " bottle_1";
+      } else if (actionId === "action.tap") {
+        example.textContent = word + " barrel_1";
       } else if (actionId === "action.tip") {
         example.textContent = word + " bottle_1 " + syntax("syntax.toward") + " " + syntax("direction.east");
       } else if (actionId === "action.upright" || actionId === "action.look") {

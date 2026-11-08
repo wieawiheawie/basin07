@@ -64,6 +64,8 @@ button, input { font: inherit; }
 .caption-divider { width: 23px; height: 1px; background: rgba(239,230,213,.24); }
 .hover-label { color: #e8c89c; letter-spacing: .06em; opacity: 0; transition: opacity .15s; }
 .hover-label.visible { opacity: 1; }
+.performance-label { color: rgba(239,230,213,.38); font-size: 8px; letter-spacing: .04em; white-space: nowrap; }
+.loading-status.complete { opacity: 0; transition: opacity 1.2s ease 1.2s; }
 .help-panel {
   position: absolute; z-index: 4; right: 28px; top: 88px; width: min(340px, calc(100% - 32px));
   max-height: min(65vh, 590px); overflow: auto; padding: 19px 19px 16px;
@@ -131,7 +133,8 @@ button, input { font: inherit; }
   .brand-subtitle { font-size: 8px; }
   .energy-card { width: 116px; }
   .quiet-button { display: none; }
-  .world-caption { top: 72px; left: 16px; }
+  .world-caption { top: 72px; left: 16px; flex-wrap: wrap; max-width: calc(100% - 32px); }
+  .performance-label { flex-basis: 100%; margin-left: 14px; }
   .command-dock { width: calc(100% - 20px); bottom: 10px; padding: 12px; }
   .dock-hint { display: none; }
   .command-form input { font-size: 11px; }
