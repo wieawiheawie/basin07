@@ -2,32 +2,35 @@
 
 ## Commands
 
-    npm ci
+    npm install
+    python3 scripts/import_medieval_props.py LowPolyMedievalPropsLite_2020.3.0_SRP_v1.0.unitypackage
     npm run dev
     npm test
     npm run typecheck
     npm run build
 
-Development builds the WebAssembly module without Binaryen optimisation. The release script runs wasm-opt; the development script does not.
+The source Unity package must first be placed in the Codespace repository root. The importer extracts the selected FBX files and shared texture into .local-assets/, which is gitignored. Vite embeds them into the application bundle. With no local import, the procedural fallback scene still runs.
 
-## Tavern model measurements
+Development builds WebAssembly without Binaryen optimisation. Release builds use wasm-opt.
 
-The 12 GLB files under `public/models/tavern/` total **471,696 bytes (460.6 KiB)**. Their source geometries contain **5,996 triangles** with one of each model. Current placements (one table, three stools, two tankards and one of each remaining model) contain **6,928 model triangles**.
+## Model and scene performance
 
-The in-game performance line shows the current scene-geometry triangle count, plus separate Normal and Low frame-interval averages. Triangle counting includes Mesh and InstancedMesh geometry, multiplying by each instanced mesh's count. Frame averages use the most recent 120 requestAnimationFrame intervals for each graphics mode; they are browser frame intervals, not a GPU timer-query measurement. Switch to each graphics mode and leave it active long enough to populate its average before comparing.
+No raw model files from the medieval pack are committed. See ASSETS.md for the author, source link, licence summary and exact model mapping.
 
-## Codespace measurements
+The in-game performance HUD counts the current scene's mesh triangles and reports separate rolling 120-frame requestAnimationFrame intervals for Normal and Low graphics. The frame intervals are browser measurements, not GPU timer-query measurements. Switch to each graphics mode and leave it active long enough to populate its average.
 
-No browser runtime measurement has been performed in this environment. The live HUD is included so the target Codespace/browser can report the scene triangle count and Normal/Low frame intervals on the actual device. No frame-time figures are claimed here.
+No Codespace browser session was available for this change, so no measured full-scene triangle total or Normal/Low frame times are recorded here. No model-file sizes or polygon totals are claimed because the source models remain local to the user's package and the public repository intentionally does not contain them.
 
-No WASM size, cold build duration, or incremental rebuild duration has been measured on the target 2-core / 7.8 GB Codespace. No estimates are recorded here.
+## Codespace build measurements
 
-After rebuilding the devcontainer, stop any running Vite process and measure the release build:
+Cold and incremental build duration, peak memory use and WASM output size have not been measured on the target Codespace. Record the actual values here only after measuring on that machine.
+
+For a release build:
 
     /usr/bin/time -v npm run build
     find dist -type f -name '*.wasm' -exec sh -c 'ls -lh "$1"; gzip -c "$1" | wc -c' _ {} \;
 
-For a cold development build, remove only generated WASM output first:
+For a cold development build:
 
     rm -rf pkg sim/target/wasm32-unknown-unknown/debug
     /usr/bin/time -v npm run wasm:dev
@@ -35,5 +38,3 @@ For a cold development build, remove only generated WASM output first:
 For an incremental rebuild, make a small edit in sim/src/lib.rs and run:
 
     /usr/bin/time -v npm run wasm:dev
-
-Record wall time, maximum resident set size, raw WASM bytes and gzipped bytes here only after measuring them on the Codespace. Keep cold and incremental results separate.

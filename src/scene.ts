@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { medievalModelBase64, medievalTextureBase64, medievalPackAvailable } from "virtual:medieval-props";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -29,9 +30,9 @@ const PACK_SCALE = RESIDENT_HEIGHT / 5;
 const TABLE_TOP_HEIGHT = 3 * PACK_SCALE;
 const PLATFORM_THICKNESS = 0.76 * PACK_SCALE;
 const TAVERN_SURFACE_Y = 0.431 + PLATFORM_THICKNESS;
-const TAVERN_TABLE_Y = TAVERN_SURFACE_Y + TABLE_TOP_HEIGHT;
+let TAVERN_TABLE_Y = TAVERN_SURFACE_Y + TABLE_TOP_HEIGHT;
 const TAVERN_MODELS = [
-  "round_table", "stool", "tankard", "mug", "bread_basket", "cheese_wheel",
+  "table", "stool", "tankard", "mug", "bread_basket", "cheese_wheel",
   "barrel", "crate", "sack", "candle", "lantern", "plank_floor"
 ] as const;
 
@@ -221,10 +222,11 @@ function createDeskScene(
       group.add(mesh);
       return mesh;
     };
-    if (kind === "round_table") {
-      add(new THREE.CylinderGeometry(1.97, 1.97, 0.18, 20), tavernWoodLight, [0, 2.61, 0]).castShadow = true;
-      add(new THREE.CylinderGeometry(0.20, 0.26, 2.55, 8), tavernWood, [0, 1.27, 0]);
-      add(new THREE.CylinderGeometry(0.72, 0.72, 0.16, 10), tavernWood, [0, 0.12, 0]);
+    if (kind === "table") {
+      add(new THREE.BoxGeometry(3.3, 0.18, 1.9), tavernWoodLight, [0, 2.61, 0]).castShadow = true;
+      for (const x of [-1.45, 1.45]) for (const z of [-0.78, 0.78]) {
+        add(new THREE.BoxGeometry(0.17, 2.52, 0.17), tavernWood, [x, 1.25, z]);
+      }
     } else if (kind === "stool") {
       add(new THREE.CylinderGeometry(0.72, 0.72, 0.16, 12), tavernWoodLight, [0, 1.8, 0]).castShadow = true;
       for (const x of [-0.48, 0.48]) for (const z of [-0.48, 0.48]) {
@@ -328,6 +330,8 @@ function createDeskScene(
   let waterPositions: Float32Array;
   let waterNormals: Float32Array;
   let peopleView: Float32Array;
+  let objectTransformsView: Float32Array;
+  let objectColoursView: Uint8Array;
 
   function bindWasmViews(): void {
     heightView = new Float32Array(memory.buffer, simulation.heightPtr(), vertexCount);
@@ -337,6 +341,8 @@ function createDeskScene(
     waterPositions = new Float32Array(memory.buffer, simulation.waterPositionsPtr(), vertexCount * 3);
     waterNormals = new Float32Array(memory.buffer, simulation.waterNormalsPtr(), vertexCount * 3);
     peopleView = new Float32Array(memory.buffer, simulation.peoplePtr(), simulation.peopleCount() * 5);
+    objectTransformsView = new Float32Array(memory.buffer, simulation.objectTransformsPtr(), simulation.objectCount() * 16);
+    objectColoursView = new Uint8Array(memory.buffer, simulation.objectColoursPtr(), simulation.objectCount());
 
     terrainGeometry.setAttribute("position", new THREE.BufferAttribute(terrainPositions, 3).setUsage(THREE.DynamicDrawUsage));
     terrainGeometry.setAttribute("normal", new THREE.BufferAttribute(terrainNormals, 3).setUsage(THREE.DynamicDrawUsage));
@@ -589,12 +595,26 @@ function createDeskScene(
     const y = isTavernModel
       ? (kind === "plank_floor" || kind === "barrel" || kind === "crate" || kind === "sack"
           ? 0.431
-          : kind === "round_table" || kind === "stool"
+          : kind === "table" || kind === "stool"
             ? TAVERN_SURFACE_Y
             : onTavernTable ? TAVERN_TABLE_Y : 0.431)
       : 0.36;
     visual.root.position.set(simulation.objectX(index) - 5, y, simulation.objectZ(index) - 5);
     visual.root.rotation.y = simulation.objectYaw(index);
+    if (kind === "pencil" || kind === "book" || kind === "bottle") {
+      visual.root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        child.material = Array.isArray(child.material)
+          ? child.material.map((material) => material.clone())
+          : child.material.clone();
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
+            paintOriginals.set(material, material.color.clone());
+          }
+        }
+      });
+    }
     if (kind === "pencil" || kind === "book" || kind === "bottle") {
       visual.root.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
@@ -637,70 +657,178 @@ function createDeskScene(
     });
   }
 
+  function applyObjectColour(index: number, colourIndex: number): void {
+    if (appliedObjectColours[index] === colourIndex) return;
+    appliedObjectColours[index] = colourIndex;
+    const visual = objectVisuals[index];
+    if (!visual) return;
+    const tint = colourIndex === 0 ? null : paintPalette[colourIndex - 1];
+    visual.root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial)) continue;
+        const original = paintOriginals.get(material);
+        if (!original) continue;
+        if (tint) material.color.copy(original).lerp(tint, 0.76);
+        else material.color.copy(original);
+      }
+    });
+  }
+
+  function decodeAsset(base64: string): ArrayBuffer {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes.buffer;
+  }
+
+  function standardizeFbxMaterial(material: THREE.Material): THREE.Material {
+    if (!(material instanceof THREE.MeshPhongMaterial)) return material;
+    const standard = new THREE.MeshStandardMaterial({
+      name: material.name,
+      color: material.color.clone(),
+      map: material.map,
+      normalMap: material.normalMap,
+      emissive: material.emissive.clone(),
+      emissiveMap: material.emissiveMap,
+      transparent: material.transparent,
+      opacity: material.opacity,
+      side: material.side,
+      roughness: 0.82
+    });
+    if (standard.map) standard.map.colorSpace = THREE.SRGBColorSpace;
+    return standard;
+  }
+
   function warmGrade(model: THREE.Group, modelId: string): void {
+    const warmTint = new THREE.Color("#c58e59");
+    const metalTint = new THREE.Color("#b18c66");
+    const clothTint = new THREE.Color("#b99a76");
+    const glassTint = new THREE.Color("#b4c5b0");
+    const waxTint = new THREE.Color("#eee0bd");
     model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
-      child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+      child.castShadow = ["table","barrel","crate","lantern"].includes(modelId);
       child.receiveShadow = true;
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      const originalMaterials = Array.isArray(child.material) ? child.material : [child.material];
+      const materials = originalMaterials.map(standardizeFbxMaterial);
+      child.material = Array.isArray(child.material) ? materials : materials[0]!;
       for (const material of materials) {
         const name = (child.name + " " + material.name).toLowerCase();
         if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
+          if (material.map) material.map.colorSpace = THREE.SRGBColorSpace;
           if (name.includes("wood") || name.includes("frame") || name.includes("wicker") || name.includes("boards") || name.includes("subfloor")) {
-            material.color.lerp(new THREE.Color("#c58e59"), 0.18);
-          } else if (name.includes("iron") || name.includes("metal")) material.color.lerp(new THREE.Color("#b18c66"), 0.12);
-          else if (name.includes("cloth")) material.color.lerp(new THREE.Color("#b99a76"), 0.12);
-          else if (name.includes("glass")) material.color.lerp(new THREE.Color("#b4c5b0"), 0.08);
-          else if (name.includes("wax")) material.color.lerp(new THREE.Color("#eee0bd"), 0.10);
-          if (name.includes("flame") || modelId === "candle" && name.includes("fire")) {
+            material.color.lerp(warmTint, 0.18);
+          } else if (name.includes("iron") || name.includes("metal")) material.color.lerp(metalTint, 0.12);
+          else if (name.includes("cloth")) material.color.lerp(clothTint, 0.12);
+          else if (name.includes("glass")) material.color.lerp(glassTint, 0.08);
+          else if (name.includes("wax")) material.color.lerp(waxTint, 0.10);
+          else material.color.lerp(warmTint, 0.035);
+          if (name.includes("flame") || modelId === "candle" && name.includes("fire") || modelId === "lantern") {
             material.emissive = new THREE.Color("#ff9b42");
-            material.emissiveIntensity = 2.4;
+            material.emissiveIntensity = modelId === "lantern" ? 1.1 : 2.4;
           }
           material.needsUpdate = true;
-        }
-      }
-      if (modelId === "candle" && (child.name.toLowerCase().includes("flame") || child.name.toLowerCase().includes("fire"))) {
-        const list = Array.isArray(child.material) ? child.material : [child.material];
-        for (const material of list) {
-          if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshPhysicalMaterial) {
-            material.emissive.set("#ff9b42");
-            material.emissiveIntensity = 2.8;
-          }
         }
       }
     });
   }
 
   async function loadTavernModels(): Promise<void> {
-    const loader = new GLTFLoader();
+    const manager = new THREE.LoadingManager();
+    if (medievalTextureBase64) {
+      const textureUrl = "data:image/png;base64," + medievalTextureBase64;
+      manager.setURLModifier((url) => /MedievalProps_Texture_01\.png/i.test(url) ? textureUrl : url);
+    }
+    const loader = new FBXLoader(manager);
     const status = document.getElementById("loading-status");
+    const assetScale = PACK_SCALE;
     let completed = 0;
     let loaded = 0;
-    const jobs = TAVERN_MODELS.map(async (modelId) => {
+    if (status) status.textContent = medievalPackAvailable
+      ? "Loading medieval props · 0/" + TAVERN_MODELS.length
+      : "Medieval pack not imported · procedural props active";
+
+    const hitMaterial = new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide
+    });
+    const hitGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.28, 8);
+
+    for (const modelId of TAVERN_MODELS) {
       try {
-        const gltf = await loader.loadAsync(`/models/tavern/${modelId}.glb`);
-        const source = gltf.scene;
+        const encoded = medievalModelBase64[modelId];
+        if (!encoded) throw new Error("The local import is missing " + modelId + ".fbx.");
+        const source = loader.parse(decodeAsset(encoded), "");
         warmGrade(source, modelId);
         source.updateMatrixWorld(true);
         const bounds = new THREE.Box3().setFromObject(source);
         const floorOffset = Number.isFinite(bounds.min.y) ? -bounds.min.y : 0;
+        const modelHeight = bounds.getSize(new THREE.Vector3()).y * assetScale;
         modelCache.set(modelId, source);
         const cachedSource = modelCache.get(modelId);
         if (!cachedSource) throw new Error("Model cache insert failed.");
         loaded += 1;
         const targets = modelTargets.get(modelId) ?? [];
-        if (targets.length >= 3) {
-          const sourceInverse = source.matrixWorld.clone().invert();
-          const modelBasis = new THREE.Matrix4()
-            .makeTranslation(0, floorOffset * PACK_SCALE, 0)
-            .multiply(new THREE.Matrix4().makeScale(PACK_SCALE, PACK_SCALE, PACK_SCALE));
+
+        if (modelId === "table") {
+          TAVERN_TABLE_Y = TAVERN_SURFACE_Y + modelHeight;
+          for (const visual of objectVisuals) {
+            if (["tankard","mug","bread_basket","cheese_wheel","candle","lantern"].includes(visual.kind)) {
+              visual.root.position.y = TAVERN_TABLE_Y;
+            }
+          }
+        }
+
+        const sourceInverse = source.matrixWorld.clone().invert();
+        const modelBasis = new THREE.Matrix4()
+          .makeTranslation(0, floorOffset * assetScale, 0)
+          .multiply(new THREE.Matrix4().makeScale(assetScale, assetScale, assetScale));
+
+        if (modelId === "plank_floor" && targets[0]) {
+          const target = targets[0];
+          target.updateMatrixWorld(true);
+          const matrix = new THREE.Matrix4();
+          const offset = new THREE.Matrix4();
+          source.traverse((part) => {
+            if (!(part instanceof THREE.Mesh)) return;
+            const relative = new THREE.Matrix4().multiplyMatrices(sourceInverse, part.matrixWorld);
+            const rows = 7;
+            const columns = 2;
+            const instances = new THREE.InstancedMesh(part.geometry, part.material, rows * columns);
+            instances.name = "plank_floor_boards_" + part.name;
+            instances.castShadow = false;
+            instances.receiveShadow = true;
+            let instanceIndex = 0;
+            for (let row = 0; row < rows; row += 1) {
+              for (let column = 0; column < columns; column += 1) {
+                offset.makeTranslation((column - 0.5) * 0.38, 0, (row - 3) * 0.12);
+                matrix.multiplyMatrices(target.matrixWorld, offset).multiply(modelBasis).multiply(relative);
+                instances.setMatrixAt(instanceIndex, matrix);
+                instanceIndex += 1;
+              }
+            }
+            instances.instanceMatrix.needsUpdate = true;
+            instances.computeBoundingSphere();
+            scene.add(instances);
+          });
+          for (const child of target.children.slice()) {
+            if (child.userData.proceduralFallback === true) target.remove(child);
+          }
+          const proxy = new THREE.Mesh(hitGeometry, hitMaterial);
+          proxy.userData.performanceIgnore = true;
+          proxy.position.y = 0.14;
+          target.add(proxy);
+        } else if (targets.length >= 3) {
           const matrix = new THREE.Matrix4();
           source.traverse((part) => {
             if (!(part instanceof THREE.Mesh)) return;
             const relative = new THREE.Matrix4().multiplyMatrices(sourceInverse, part.matrixWorld);
             const instances = new THREE.InstancedMesh(part.geometry, part.material, targets.length);
             instances.name = modelId + "_instances_" + part.name;
-            instances.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+            instances.castShadow = ["table","barrel","crate","lantern"].includes(modelId);
             instances.receiveShadow = true;
             for (let instanceIndex = 0; instanceIndex < targets.length; instanceIndex += 1) {
               const target = targets[instanceIndex];
@@ -713,26 +841,23 @@ function createDeskScene(
             instances.computeBoundingSphere();
             scene.add(instances);
           });
-          const hitMaterial = new THREE.MeshBasicMaterial({
-            transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide
-          });
           for (const target of targets) {
             for (const child of target.children.slice()) {
               if (child.userData.proceduralFallback === true) target.remove(child);
             }
-            const hitProxy = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.28, 8), hitMaterial);
-            hitProxy.userData.performanceIgnore = true;
-            hitProxy.position.y = 0.14;
-            target.add(hitProxy);
+            const proxy = new THREE.Mesh(hitGeometry, hitMaterial);
+            proxy.userData.performanceIgnore = true;
+            proxy.position.y = 0.14;
+            target.add(proxy);
           }
         } else {
           for (const target of targets) {
             const instance = cachedSource.clone(true);
-            instance.scale.setScalar(PACK_SCALE);
-            instance.position.y += floorOffset * PACK_SCALE;
+            instance.scale.setScalar(assetScale);
+            instance.position.y += floorOffset * assetScale;
             instance.traverse((child) => {
               if (child instanceof THREE.Mesh) {
-                child.castShadow = ["round_table","barrel","crate","lantern"].includes(modelId);
+                child.castShadow = ["table","barrel","crate","lantern"].includes(modelId);
                 child.receiveShadow = true;
               }
             });
@@ -740,21 +865,32 @@ function createDeskScene(
               if (child.userData.proceduralFallback === true) target.remove(child);
             }
             target.add(instance);
+            if (modelId === "cheese_wheel") {
+              const cheese = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.26, 0.26, 0.11, 12),
+                tavernCheese
+              );
+              cheese.position.y = 0.17;
+              cheese.castShadow = true;
+              target.add(cheese);
+            }
           }
         }
       } catch (error) {
-        console.warn(`Tavern model ${modelId} failed to load; keeping its procedural fallback.`, error);
+        console.warn("Medieval model " + modelId + " failed; using its procedural fallback.", error);
       } finally {
         completed += 1;
-        if (status) status.textContent = `Loading tavern models · ${completed}/${TAVERN_MODELS.length}`;
+        if (status) status.textContent = "Loading medieval props · " + completed + "/" + TAVERN_MODELS.length;
       }
-    });
-    await Promise.all(jobs);
+    }
+
     updateSceneTriangleCount();
     if (status) {
       status.textContent = loaded === TAVERN_MODELS.length
-        ? "The tavern is ready."
-        : `Tavern ready · ${loaded}/${TAVERN_MODELS.length} models · fallbacks active`;
+        ? "Medieval props ready · table and furniture loaded"
+        : medievalPackAvailable
+          ? "Tavern ready · " + loaded + "/" + TAVERN_MODELS.length + " pack models · fallbacks active"
+          : "Tavern ready · import the local medieval pack to enable its models";
       status.classList.add("complete");
     }
   }
@@ -949,16 +1085,25 @@ function createDeskScene(
           visual.root.rotation.y = simulation.objectYaw(index);
         }
 
+        const colourIndex = objectColoursView[index] ?? 0;
+        if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
+
+        const transformOffset = index * 16;
+        if (visual.kind === "bottle" || visual.kind === "book" ||
+            visual.kind === "pencil" || visual.kind === "garden") {
+          visual.root.matrix.fromArray(objectTransformsView, transformOffset);
+          visual.root.matrixAutoUpdate = false;
+          visual.root.matrixWorldNeedsUpdate = true;
+        }
+
         if (visual.kind === "bottle") {
-          visual.root.rotation.y = simulation.objectYaw(index);
-          visual.root.rotation.z = simulation.objectTilt(index);
           const capped = simulation.objectCapOn(index);
           visual.cap.visible = capped;
           visual.looseCap.visible = !capped;
           if (!capped) {
-            const bottleX = simulation.objectX(index);
-            const bottleZ = simulation.objectZ(index);
-            visual.looseCap.position.set(bottleX - 5 + 0.28, 0.41, bottleZ - 5 + 0.18);
+            const bottleX = objectTransformsView[transformOffset + 12] ?? 0;
+            const bottleZ = objectTransformsView[transformOffset + 14] ?? 0;
+            visual.looseCap.position.set(bottleX + 0.28, 0.41, bottleZ + 0.18);
             visual.looseCap.rotation.set(0, 0.18, Math.PI / 2);
           }
           const amount = simulation.objectVolume(index) / 0.14;

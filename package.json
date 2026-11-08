@@ -10,7 +10,8 @@
     "dev": "npm run wasm:dev && vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "build": "npm run wasm:release && npm run typecheck && vite build",
-    "test": "cargo test --manifest-path sim/Cargo.toml && vitest run"
+    "test": "cargo test --manifest-path sim/Cargo.toml && vitest run",
+    "models:import": "python3 scripts/import_medieval_props.py"
   },
   "dependencies": {
     "three": "0.180.0"

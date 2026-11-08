@@ -5,3 +5,7 @@ sim/target/
 target/
 *.log
 .DS_Store
+
+# Source model assets are imported locally and embedded into the game bundle.
+.local-assets/
+*.unitypackage

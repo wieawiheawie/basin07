@@ -18,6 +18,8 @@ declare module "*deskbound_sim.js" {
     waterPositionsPtr(): number;
     waterNormalsPtr(): number;
     peoplePtr(): number;
+    objectTransformsPtr(): number;
+    objectColoursPtr(): number;
     peopleCount(): number;
     objectCount(): number;
     objectName(index: number): string;
@@ -36,4 +38,11 @@ declare module "*deskbound_sim.js" {
 
   export function wasmMemory(): WebAssembly.Memory;
   export default function init(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<unknown>;
+}
+
+
+declare module "virtual:medieval-props" {
+  export const medievalModelBase64: Readonly<Record<string, string>>;
+  export const medievalTextureBase64: string;
+  export const medievalPackAvailable: boolean;
 }

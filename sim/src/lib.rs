@@ -9,6 +9,7 @@ use parser::{Command, Condition, Direction, Glossary, PipeStep, PositionExpr, St
 use water::{CELL_SIZE, DESK_SIZE, FlowBuffers, GRID_CELLS, GRID_SIZE};
 
 const FIXED_STEP: f32 = 1.0 / 60.0;
+const OBJECT_MATRIX_STRIDE: usize = 16;
 const INITIAL_BOTTLE_VOLUME: f32 = 0.14;
 const INITIAL_BARREL_VOLUME: f32 = 0.75;
 const ACTION_IDS: [&str; 12] = [
@@ -32,7 +33,7 @@ enum ObjectKind {
     Book,
     Pencil,
     Garden,
-    RoundTable,
+    Table,
     Stool,
     Tankard,
     Mug,
@@ -91,6 +92,7 @@ impl RigidBody {
     }
 }
 
+#[derive(Clone)]
 struct WhenListener {
     condition: Condition,
     commands: Vec<Command>,
@@ -107,6 +109,7 @@ pub struct Simulation {
     water_positions: Vec<f32>,
     water_normals: Vec<f32>,
     objects: Vec<WorldObject>,
+    object_transforms: Vec<f32>,
     colours: Vec<u8>,
     bodies: Vec<RigidBody>,
     people: Vec<Person>,
@@ -171,7 +174,7 @@ impl Simulation {
                 cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0,
             },
             WorldObject { name: "plank_floor_1", kind: ObjectKind::PlankFloor, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
-            WorldObject { name: "round_table_1", kind: ObjectKind::RoundTable, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
+            WorldObject { name: "table_1", kind: ObjectKind::Table, x: 7.6, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
             WorldObject { name: "stool_1", kind: ObjectKind::Stool, x: 7.28, z: 7.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
             WorldObject { name: "stool_2", kind: ObjectKind::Stool, x: 7.79, z: 7.43, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
             WorldObject { name: "stool_3", kind: ObjectKind::Stool, x: 7.79, z: 7.99, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 },
@@ -195,6 +198,7 @@ impl Simulation {
             Person { x: 6.1, z: 5.4, heading: -2.1, wetness: 0.0, wander_timer: 0.6, seed: 59, target_x: 8.9, target_z: 8.45, seat_target: false, at_tavern: false, seated: false },
         ];
 
+        let object_transforms = vec![0.0; objects.len() * OBJECT_MATRIX_STRIDE];
         let colours = vec![0; objects.len()];
         let bodies = objects.iter().map(|object| RigidBody::for_object(object.kind)).collect();
 
@@ -208,6 +212,7 @@ impl Simulation {
             water_normals: vec![0.0; GRID_CELLS * 3],
             people_buffer: vec![0.0; people.len() * 5],
             objects,
+            object_transforms,
             colours,
             bodies,
             people,
@@ -226,6 +231,7 @@ impl Simulation {
         };
         simulation.refresh_mesh_buffers();
         simulation.sync_people_buffer();
+        simulation.sync_object_transforms();
         simulation
     }
 
@@ -328,6 +334,16 @@ impl Simulation {
         self.people_buffer.as_ptr() as usize as u32
     }
 
+    #[wasm_bindgen(js_name = objectTransformsPtr)]
+    pub fn object_transforms_ptr(&self) -> u32 {
+        self.object_transforms.as_ptr() as usize as u32
+    }
+
+    #[wasm_bindgen(js_name = objectColoursPtr)]
+    pub fn object_colours_ptr(&self) -> u32 {
+        self.colours.as_ptr() as usize as u32
+    }
+
     #[wasm_bindgen(js_name = peopleCount)]
     pub fn people_count(&self) -> usize {
         self.people.len()
@@ -352,7 +368,7 @@ impl Simulation {
                 ObjectKind::Book => "book",
                 ObjectKind::Pencil => "pencil",
                 ObjectKind::Garden => "garden",
-                ObjectKind::RoundTable => "round_table",
+                ObjectKind::Table => "table",
                 ObjectKind::Stool => "stool",
                 ObjectKind::Tankard => "tankard",
                 ObjectKind::Mug => "mug",
@@ -470,6 +486,7 @@ impl Simulation {
         self.process_queue();
         self.refresh_mesh_buffers();
         self.sync_people_buffer();
+        self.sync_object_transforms();
     }
 
     fn process_queue(&mut self) {
@@ -495,14 +512,20 @@ impl Simulation {
                 return;
             }
         };
+        let previous_aliases = self.aliases.clone();
+        let previous_listener_count = self.listeners.len();
         let mut commands = Vec::new();
         if let Err(error) = self.compile_statements(&program, &mut commands) {
+            self.aliases = previous_aliases;
+            self.listeners.truncate(previous_listener_count);
             self.publish_result(Err(error));
             return;
         }
 
         let cost: f32 = commands.iter().map(command_energy_cost).sum();
         if cost > self.energy {
+            self.aliases = previous_aliases;
+            self.listeners.truncate(previous_listener_count);
             self.publish_result(Err(format!(
                 "This script needs {:.0} energy, but only {:.0} is available. Nothing was queued.",
                 cost, self.energy
@@ -554,7 +577,7 @@ impl Simulation {
                     ObjectKind::Book => "closed book".to_owned(),
                     ObjectKind::Pencil => "wooden pencil".to_owned(),
                     ObjectKind::Garden => "soil and small sprouts".to_owned(),
-                    ObjectKind::RoundTable => "round wooden tavern table".to_owned(),
+                    ObjectKind::Table => "wooden tavern table".to_owned(),
                     ObjectKind::Stool => "tavern stool".to_owned(),
                     ObjectKind::Tankard => "empty tankard".to_owned(),
                     ObjectKind::Mug => "empty mug".to_owned(),
@@ -583,7 +606,9 @@ impl Simulation {
                     .map(|id| self.glossary.word_for(id))
                     .collect::<Vec<_>>()
                     .join(", ");
-                Ok(format!("Commands discovered so far: {commands}."))
+                Ok(format!(
+                    "Commands discovered so far: {commands}. Scripts also support ';', repeat N {{ ... }}, if/when garden.moisture < 20% {{ ... }}, let name = value, and object -> roll_east -> paint red."
+                ))
             }
             Command::Uncap(name) => {
                 let object_name = {
@@ -1014,6 +1039,41 @@ impl Simulation {
                 person.heading += (person.seed as f32 / u32::MAX as f32 - 0.5) * 0.7;
                 person.wander_timer = 1.5 + (person.seed % 100) as f32 / 90.0;
             }
+        }
+    }
+
+    fn sync_object_transforms(&mut self) {
+        for (index, object) in self.objects.iter().enumerate() {
+            let offset = index * OBJECT_MATRIX_STRIDE;
+            let (sin_yaw, cos_yaw) = object.yaw.sin_cos();
+            let (sin_tilt, cos_tilt) = object.tilt.sin_cos();
+            let y = if object.kind == ObjectKind::Pencil {
+                let grid_x = (object.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                    .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+                let grid_z = (object.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                    .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+                0.36 + self.height[grid_z * GRID_SIZE + grid_x]
+            } else {
+                0.36
+            };
+
+            // Column-major Y-yaw × Z-tilt transform, ready for THREE.Matrix4.fromArray.
+            self.object_transforms[offset] = cos_yaw * cos_tilt;
+            self.object_transforms[offset + 1] = sin_tilt;
+            self.object_transforms[offset + 2] = -sin_yaw * cos_tilt;
+            self.object_transforms[offset + 3] = 0.0;
+            self.object_transforms[offset + 4] = -cos_yaw * sin_tilt;
+            self.object_transforms[offset + 5] = cos_tilt;
+            self.object_transforms[offset + 6] = sin_yaw * sin_tilt;
+            self.object_transforms[offset + 7] = 0.0;
+            self.object_transforms[offset + 8] = sin_yaw;
+            self.object_transforms[offset + 9] = 0.0;
+            self.object_transforms[offset + 10] = cos_yaw;
+            self.object_transforms[offset + 11] = 0.0;
+            self.object_transforms[offset + 12] = object.x - 5.0;
+            self.object_transforms[offset + 13] = y;
+            self.object_transforms[offset + 14] = object.z - 5.0;
+            self.object_transforms[offset + 15] = 1.0;
         }
     }
 

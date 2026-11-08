@@ -124,7 +124,7 @@ pub fn parse(source: &str, glossary: &Glossary) -> Result<Command, String> {
     parser.command()
 }
 
-pub fn parse_program(source: &str, glossary: &Glossary) -> Result<Vec<Statement>, String> {
+pub fn parse_program(source: &str, _glossary: &Glossary) -> Result<Vec<Statement>, String> {
     let tokens = lex(source)?;
     if tokens.is_empty() {
         return Err("Write a command or script first.".to_owned());
@@ -192,7 +192,9 @@ impl Parser<'_> {
     }
 
     fn carve(&mut self) -> Result<Command, String> {
-        self.expect_keyword("syntax.from")?;
+        if self.peek_keyword("syntax.from") {
+            self.expect_keyword("syntax.from")?;
+        }
         let from = self.position()?;
         self.expect_keyword("syntax.to")?;
         let to = self.position()?;
@@ -220,8 +222,12 @@ impl Parser<'_> {
 
     fn tip(&mut self) -> Result<Command, String> {
         let object = self.word("Tell me which object to tip.")?;
-        let toward = if self.peek_keyword("syntax.toward") {
-            self.expect_keyword("syntax.toward")?;
+        let toward = if self.peek_keyword("syntax.toward") || self.peek_word("at") {
+            if self.peek_keyword("syntax.toward") {
+                self.expect_keyword("syntax.toward")?;
+            } else {
+                let _ = self.word("Expected 'at' or the configured direction keyword.")?;
+            }
             Some(self.position()?)
         } else {
             None
@@ -288,6 +294,13 @@ impl Parser<'_> {
             Some(TokenKind::Word(word)) => self.glossary.id_for(word) == Some(action_id),
             _ => false,
         }
+    }
+
+    fn peek_word(&self, expected: &str) -> bool {
+        matches!(
+            self.tokens.get(self.cursor).map(|token| &token.kind),
+            Some(TokenKind::Word(word)) if word.eq_ignore_ascii_case(expected)
+        )
     }
 
     fn word(&mut self, message: &str) -> Result<String, String> {
@@ -657,6 +670,22 @@ mod tests {
         assert_eq!(program.len(), 3);
         assert!(matches!(program[0], Statement::RawCommand(_)));
         assert!(matches!(program[2], Statement::Repeat { count: 5, .. }));
+        assert_eq!(
+            parse("carve (1,2) to (7,2)", &glossary()).unwrap(),
+            Command::Carve {
+                from: PositionExpr::Coordinate(1.0, 2.0),
+                to: PositionExpr::Coordinate(7.0, 2.0),
+                depth: 0.16,
+                width: 0.34,
+            }
+        );
+        assert_eq!(
+            parse("tip bottle_1 at (10,10)", &glossary()).unwrap(),
+            Command::Tip {
+                object: "bottle_1".to_owned(),
+                toward: Some(PositionExpr::Coordinate(10.0, 10.0)),
+            }
+        );
     }
 
     #[test]

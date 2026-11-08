@@ -1,37 +1,33 @@
 # Third-party assets and credits
 
-## Low Poly Tavern Sampler (FREE) — 12 Models
+## Low Poly Simple Medieval Props
 
-**Author:** `persik_67`  
-**Pack:** *Low Poly Tavern Sampler (FREE) - 12 Models*  
-**Files used:** `public/models/tavern/*.glb` (12 GLB files).  
-**Author-provided licence:** [`public/models/tavern/LICENSE.txt`](public/models/tavern/LICENSE.txt).
+**Author:** JustCreate3D (Oleh Lila)  
+**Pack page:** https://justcreate3d.itch.io/low-poly-simple-medieval-props  
+**Source package:** LowPolyMedievalPropsLite_2020.3.0_SRP_v1.0.unitypackage  
+**Licence:** the author's own licence terms, described on the linked pack page. This is **not CC0** and should not be described as a Creative Commons licence.
 
-The supplied licence is the author's own free-use licence. It is **not CC0** and is not a Creative Commons licence. The licence permits personal and commercial use in games and apps, modification (including recolouring and rescaling), and shipping the models embedded inside a game or app. It prohibits reselling, sharing, or giving away the model files themselves (modified or unmodified), either individually or as part of another asset pack, template, model library, or kit. It also prohibits claiming the models as your own work; copyright remains with the author.
+The pack licence permits personal and commercial use, modifications, and inclusion of the assets as integrated content in a compiled game or application. It does **not** permit redistributing the model files separately (modified or unmodified), as an asset pack/library/template, or through an application feature that lets users extract, reuse, or edit the source models. Copyright remains with the author. Attribution is not a stated requirement; Deskbound credits the author here voluntarily.
 
-Deskbound uses these files only as embedded runtime game assets. The project does not provide an asset-only download or a repackaged model kit. Keep the licence file with the assets. No `.blend` source files are included in the repository.
+The repository therefore does not store the Unity package or extracted FBX/texture source files. The .gitignore excludes *.unitypackage and .local-assets/. scripts/import_medieval_props.py extracts only the selected FBX models and shared texture into the local ignored directory. During build, the Vite plugin embeds them into the Deskbound application bundle; the application does not offer the models as individual downloads. Do not upload the source assets to GitHub or publish an asset-only download. No .blend files are included or generated.
 
-The pack title and author handle are identifiable in itch.io's public game-asset listings, but I could not verify a stable direct page URL for this specific item; no guessed product link is recorded here.
+### Pack-to-game mapping
 
-### Model measurements
+The pack does not contain exact equivalents for every tavern prop. These are the closest included choices:
 
-| Measurement | Verified value |
-|---|---:|
-| GLB files | 12 |
-| Combined GLB size | 471,696 bytes (460.6 KiB) |
-| Triangles, one of each model | 5,996 |
-| Triangles, current placed instances | 6,928 |
+| Deskbound prop | Source model | Notes |
+| --- | --- | --- |
+| table_1 | Furniture_01.fbx | Four-legged wooden table used as the tavern table |
+| stool_1–stool_3 | Furniture_02.fbx | Bench-style seating is used as a stool substitute |
+| tankards | Jug_01.fbx | Jug model used as tavern drinkware |
+| mugs | Cup_01.fbx | Cup model |
+| bread basket | Bucket_01.fbx | Container substitute |
+| cheese wheel | Plate_04.fbx | Plate model with a small procedural cheese detail |
+| barrel | Barrel_01.fbx | Rain-water source prop |
+| crate | Box_01.fbx | Garden-side storage |
+| sack | Bag_01.fbx | Garden-side storage |
+| candle | Candle_01.fbx | Candle model |
+| lantern | Fire_01.fbx | Brazier/fire prop used as a warm-light substitute |
+| plank floor | WoodPlank_01.fbx | Repeated as an instanced platform |
 
-The placed-instance total accounts for three stools and two tankards. The live scene counter in the game additionally includes the desk, terrain, water, residents and procedural meshes; it counts geometry triangles and multiplies instanced meshes by their instance count.
-
-## Other possible sources
-
-These official Kenney source pages identify their packs as **Creative Commons CC0** and are listed only as possible future sources:
-
-- [Kenney Furniture Kit](https://kenney.nl/assets/furniture-kit)
-- [Kenney Prototype Kit](https://kenney.nl/assets/prototype-kit)
-- [Kenney support and licensing notes](https://kenney.nl/support)
-
-Check each downloaded pack's included licence file and available export formats before importing anything. Prefer GLB or glTF and keep a copy of the licence information with any imported pack.
-
-Quaternius is deliberately not listed as a CC0 source: its [licence page](https://quaternius.com/license.html) identifies the Quaternius Asset License (QAL), not CC0. Review that licence separately before choosing its files.
+A procedural version remains available for each prop if the local import is missing or a model fails to load. The table and props are rescaled to the miniature world; imported model floor points are normalized before placement.
