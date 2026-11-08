@@ -3,3 +3,5 @@
 /.trunk/
 *.wasm
 *.log
+
+/.build-metrics/
