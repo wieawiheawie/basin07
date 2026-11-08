@@ -2,7 +2,7 @@
 
 ## Milestone 1 — initial implementation
 
-**Status: source committed; lightweight CI rerun pending.**
+**Status: source committed; lightweight GitHub CI passed. Browser/WASM build still needs a Codespace check.**
 
 ### Present in the source
 
@@ -24,8 +24,7 @@
 
 ### Verification
 
-- The last completed Rust test step passed all 14 tests, including lexer, parser, interpreter, internal water-volume conservation, edge spill and groove channeling.
-- Clippy found a `new_without_default` lint; the current commit adds `Default` and is being rechecked.
-- The Rust `wasmMemory` export is a module-level WASM function, matching the frontend import. A browser/WASM build is not part of the lightweight CI.
-- The Vitest autocomplete fixture has been corrected to match prefix-search behaviour; the current CI typecheck is pending.
-- Actual Codespace WebGL2 startup and visual quality still need a browser check after rebuilding the container.
+- GitHub Actions passed on commit `c3775ae0755e29590a3dfc703e8dc995a726b2b1`: all 14 Rust unit tests, `cargo clippy --all-targets -- -D warnings`, and the TypeScript `tsc --noEmit` typecheck.
+- The Vitest helper tests are present and `npm test` runs them after Cargo tests, but Vitest itself is not part of the deliberately limited CI and has not been run in this environment.
+- CI does not compile the WASM target or run `wasm-opt`. The Codespace WebGL2 startup, WASM glue integration, visual scene and actual memory/performance behaviour remain unverified until the container is rebuilt and `npm run dev` is run there.
+- `BUILD.md` contains no size or timing claims; target Codespace measurements have not been taken.
