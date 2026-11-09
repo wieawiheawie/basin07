@@ -34,10 +34,10 @@
 ## Direct mouse interaction
 
 - The command console is an optional popup instead of the always-visible bottom dock. The wordbook remains available separately.
-- Left-drag moves world objects through the Rust/WASM object-position API.
-- Right-click picks up an object; move the pointer while holding it and right-click again to place it. Held objects lift visually.
+- Left-drag moves objects through a Rust/WASM spring constraint; the body's mass controls acceleration and drag lag.
+- Right-click picks up an object; move the pointer while holding it and right-click again to release it. The physics body keeps its release momentum.
 - Holding both mouse buttons and dragging cuts grooves into the tabletop height grid. Over the garden, the plot's subdivided soil plane is also deformed so the furrow is visible.
-- Holding both mouse buttons on a bottle uncaps it directly. The loose cap remains beside the bottle.
+- Holding both mouse buttons on a bottle uncaps it directly. The cap becomes a separate named physics object that can be picked up and knocked around.
 - Middle-drag orbits the camera; the wheel zooms. The right button is no longer used for camera orbit.
 - Dragging, pickup and direct uncap update the same Rust simulation state used by the command interpreter.
 
@@ -49,13 +49,13 @@
 - Garden furrows use Gaussian falloff on the subdivided soil mesh and recompute vertex normals after each edit.
 - Normal graphics uses half-resolution SSAO, 2048² PCF soft key-light shadows and low-amplitude procedural bump detail on wood. Low graphics disables SSAO, bloom, shadows, the desk lamp and dust.
 - Clicking book_1 opens the journal/wordbook. Clicking the physical desk lamp switches High/Low graphics; the floating buttons remain as alternatives.
-- Dragged and picked-up objects ease toward the pointer with exponential interpolation, while their positions remain owned by Rust/WASM.
+- Dragged and picked-up objects follow a damped spring constraint in Rust/WASM; there is no separate visual-only pointer interpolation.
 
 ## Existing simulation and known limits
 
 - Rust crate with a 128 × 128 height grid, fixed 60 Hz stepping, water depth grid, bottle and rain-barrel state, smallfolk positions and command energy queue.
 - Internal water transfers conserve volume apart from configured evaporation and edge spilling.
-- The garden is decorative; sprouts do not grow or consume water.
+- The garden can be dug and watered, but crop growth and plant water consumption are not implemented.
 - Five residents use four distinct CC0 Quaternius rigged GLB variants. Each unique GLB is loaded once, skeleton-cloned for reuse, and animated with Idle, Walk and Interact clips.
 - Residents carry hunger, fatigue, diligence and curiosity values. Each periodically scores watering, digging, eating, resting and wandering tasks using current garden moisture, water availability, food proximity and their own traits. Tasks are not assigned by a fixed per-person schedule.
 - Watering agents find a nearby bottle with remaining water, approach it, uncap it if needed, then push it toward the garden. The bottle is tipped through the same physics state as other collisions and pours into the height/water grid along its spout direction. Other agents may dig while the water is carried.

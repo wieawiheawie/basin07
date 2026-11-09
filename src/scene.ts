@@ -3,11 +3,6 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { medievalModelBase64, medievalTextureBase64, medievalPackAvailable } from "virtual:medieval-props";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
 import type { Simulation } from "../pkg/deskbound_sim.js";
 
 type HoverCallback = (name: string) => void;
@@ -21,7 +16,6 @@ interface SceneApi {
 interface ObjectVisual {
   root: THREE.Group;
   cap: THREE.Mesh;
-  looseCap: THREE.Group;
   fill: THREE.Mesh;
   kind: string;
 }
@@ -149,6 +143,59 @@ function floorTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+function terrainTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas textures are unavailable.");
+  context.fillStyle = "#70543b";
+  context.fillRect(0, 0, 512, 512);
+  let seed = 0x5eed1234;
+  const random = (): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let i = 0; i < 12500; i += 1) {
+    const x = random() * 512;
+    const y = random() * 512;
+    const size = 0.7 + random() * 2.6;
+    const tone = Math.floor(random() * 5);
+    context.fillStyle = ["rgba(35,27,19,.20)","rgba(183,145,97,.20)","rgba(38,68,33,.13)","rgba(218,182,126,.12)","rgba(19,43,23,.12)"][tone] ?? "rgba(0,0,0,.1)";
+    context.beginPath();
+    context.ellipse(x, y, size * 1.4, size * 0.7, random() * 3.1, 0, Math.PI * 2);
+    context.fill();
+  }
+  for (let patch = 0; patch < 175; patch += 1) {
+    const cx = random() * 512;
+    const cy = random() * 512;
+    const radius = 5 + random() * 22;
+    context.fillStyle = random() > 0.5 ? "rgba(94,119,61,.15)" : "rgba(48,83,43,.18)";
+    context.beginPath();
+    context.ellipse(cx, cy, radius * 1.4, radius * 0.8, random() * 3.1, 0, Math.PI * 2);
+    context.fill();
+    for (let blade = 0; blade < 16; blade += 1) {
+      const angle = random() * Math.PI * 2;
+      const distance = random() * radius;
+      const x = cx + Math.cos(angle) * distance;
+      const y = cy + Math.sin(angle) * distance;
+      context.strokeStyle = random() > 0.5 ? "rgba(151,169,91,.34)" : "rgba(45,85,42,.38)";
+      context.lineWidth = 1 + random() * 1.4;
+      context.beginPath();
+      context.moveTo(x, y);
+      context.lineTo(x + Math.cos(angle + 0.5) * (2 + random() * 5), y - 2 - random() * 5);
+      context.stroke();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1.5, 1.5);
+  texture.anisotropy = 4;
+  return texture;
+}
+
 function makeBox(
   parent: THREE.Object3D,
   size: [number, number, number],
@@ -173,8 +220,8 @@ function createDeskScene(
   onInteraction: InteractionCallback
 ): SceneApi {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#28231e");
-  scene.fog = new THREE.Fog("#28231e", 21, 39);
+  scene.background = new THREE.Color("#d8d0b7");
+  scene.fog = new THREE.Fog("#d8d0b7", 23, 42);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 90);
   const target = new THREE.Vector3(0, 0.08, 0);
@@ -194,7 +241,7 @@ function createDeskScene(
   updateCamera();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
@@ -208,7 +255,7 @@ function createDeskScene(
   const keyLight = new THREE.DirectionalLight("#ffe5c1", 2.55);
   keyLight.position.set(-8.5, 8.2, 4.2);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.mapSize.set(1024, 1024);
   keyLight.shadow.camera.left = -11;
   keyLight.shadow.camera.right = 11;
   keyLight.shadow.camera.top = 11;
@@ -237,7 +284,10 @@ function createDeskScene(
   const brassMat = new THREE.MeshStandardMaterial({ color: "#b38a4f", metalness: 0.66, roughness: 0.33 });
   const ceramicMat = new THREE.MeshStandardMaterial({ color: "#d8cfb8", roughness: 0.54 });
   const greenMat = new THREE.MeshStandardMaterial({ color: "#81936e", roughness: 0.76 });
-  const soilMat = new THREE.MeshStandardMaterial({ color: "#49382b", roughness: 1 });
+  const soilMat = new THREE.MeshStandardMaterial({
+    color: "#d2c3a1", map: terrainTexture(), bumpMap: surfaceBump, bumpScale: 0.026,
+    roughness: 0.98, metalness: 0
+  });
   const leafMat = new THREE.MeshStandardMaterial({ color: "#8ba66f", roughness: 0.82 });
   const bookMaterials = [
     new THREE.MeshStandardMaterial({ color: "#8b6656", roughness: 0.93 }),
@@ -259,6 +309,10 @@ function createDeskScene(
   const tavernFlame = new THREE.MeshStandardMaterial({
     color: "#ffbf6a", emissive: "#ff9b35", emissiveIntensity: 2.4, roughness: 0.35
   });
+  const treeBark = new THREE.MeshStandardMaterial({ color: "#68462e", roughness: 1 });
+  const treeLeaf = new THREE.MeshStandardMaterial({ color: "#477346", roughness: 0.98, flatShading: true });
+  const treeLeafLight = new THREE.MeshStandardMaterial({ color: "#789755", roughness: 0.98, flatShading: true });
+  const treeLeafDark = new THREE.MeshStandardMaterial({ color: "#365d3b", roughness: 0.98, flatShading: true });
 
   function makeTavernFallback(kind: string): THREE.Group {
     const group = new THREE.Group();
@@ -370,6 +424,8 @@ function createDeskScene(
   waterGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
   let boundBuffer = memory.buffer;
+  let lastTerrainRevision = -1;
+  let lastWaterRevision = -1;
   let heightView: Float32Array;
   let waterView: Float32Array;
   let terrainPositions: Float32Array;
@@ -397,10 +453,12 @@ function createDeskScene(
     waterGeometry.setAttribute("normal", new THREE.BufferAttribute(waterNormals, 3).setUsage(THREE.DynamicDrawUsage));
     waterGeometry.setAttribute("depth", new THREE.BufferAttribute(waterView, 1).setUsage(THREE.DynamicDrawUsage));
     boundBuffer = memory.buffer;
+    lastTerrainRevision = -1;
+    lastWaterRevision = -1;
   }
   bindWasmViews();
 
-  const terrain = new THREE.Mesh(terrainGeometry, woodMat);
+  const terrain = new THREE.Mesh(terrainGeometry, soilMat);
   terrain.receiveShadow = true;
   terrain.position.y = 0;
   scene.add(terrain);
@@ -443,6 +501,75 @@ function createDeskScene(
   const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
   waterMesh.renderOrder = 2;
   scene.add(waterMesh);
+
+  const terrainUvs = new Float32Array(vertexCount * 2);
+  for (let z = 0; z < GRID; z += 1) {
+    for (let x = 0; x < GRID; x += 1) {
+      const base = (z * GRID + x) * 2;
+      terrainUvs[base] = x / (GRID - 1);
+      terrainUvs[base + 1] = z / (GRID - 1);
+    }
+  }
+  terrainGeometry.setAttribute("uv", new THREE.BufferAttribute(terrainUvs, 2));
+
+  // Instanced grass tufts and pebbles provide miniature landscape detail without
+  // a large per-mesh draw-call cost.
+  const bladeGeometry = new THREE.BufferGeometry();
+  bladeGeometry.setAttribute("position", new THREE.Float32BufferAttribute([
+    -0.034, 0, 0, 0.012, 0.13, 0, 0.026, 0, 0,
+    0, 0, -0.035, 0, 0.16, 0.008, 0, 0, 0.03,
+    0.026, 0, 0.018, -0.01, 0.115, -0.014, -0.03, 0, -0.025
+  ], 3));
+  bladeGeometry.computeVertexNormals();
+  const bladeMaterial = new THREE.MeshStandardMaterial({
+    color: "#719052", roughness: 1, side: THREE.DoubleSide, vertexColors: true
+  });
+  const grassCount = 640;
+  const grass = new THREE.InstancedMesh(bladeGeometry, bladeMaterial, grassCount);
+  grass.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  grass.castShadow = false;
+  grass.receiveShadow = false;
+  const grassDummy = new THREE.Object3D();
+  let grassSeed = 0x6d2b79f5;
+  const grassRandom = (): number => {
+    grassSeed = (grassSeed * 1664525 + 1013904223) >>> 0;
+    return grassSeed / 4294967296;
+  };
+  let grassIndex = 0;
+  while (grassIndex < grassCount) {
+    const x = 0.35 + grassRandom() * 9.3;
+    const z = 0.35 + grassRandom() * 9.3;
+    const tavernClear = x > 6.0 && z > 6.0;
+    const gardenClear = x > 4.15 && x < 5.85 && z > 4.15 && z < 5.85;
+    if (tavernClear || gardenClear) continue;
+    grassDummy.position.set(x - 5, 0.438, z - 5);
+    grassDummy.rotation.y = grassRandom() * Math.PI * 2;
+    const size = 0.55 + grassRandom() * 0.85;
+    grassDummy.scale.set(size, size, size);
+    grassDummy.updateMatrix();
+    grass.setMatrixAt(grassIndex, grassDummy.matrix);
+    const tint = new THREE.Color().setHSL(0.25 + grassRandom() * 0.07, 0.28 + grassRandom() * 0.18, 0.30 + grassRandom() * 0.16);
+    grass.setColorAt(grassIndex, tint);
+    grassIndex += 1;
+  }
+  if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+  scene.add(grass);
+
+  const pebbleGeometry = new THREE.DodecahedronGeometry(0.055, 0);
+  const pebbleMaterial = new THREE.MeshStandardMaterial({ color: "#93816c", roughness: 1, flatShading: true });
+  const pebbles = new THREE.InstancedMesh(pebbleGeometry, pebbleMaterial, 64);
+  pebbles.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  pebbles.castShadow = false;
+  for (let index = 0; index < pebbles.count; index += 1) {
+    const x = 0.45 + ((index * 37) % 89) / 89 * 9.1;
+    const z = 0.40 + ((index * 61) % 83) / 83 * 9.2;
+    grassDummy.position.set(x - 5, 0.447, z - 5);
+    grassDummy.rotation.set(index * 0.47, index * 0.71, index * 0.23);
+    grassDummy.scale.set(0.55 + (index % 4) * 0.18, 0.5 + (index % 3) * 0.15, 0.65 + (index % 5) * 0.10);
+    grassDummy.updateMatrix();
+    pebbles.setMatrixAt(index, grassDummy.matrix);
+  }
+  scene.add(pebbles);
 
   // The lamp is a decorative warm source, not a gameplay object.
   const lamp = new THREE.Group();
@@ -526,24 +653,54 @@ function createDeskScene(
     fill.position.y = 0.27;
     root.add(fill);
 
-    const looseCap = new THREE.Group();
-    const capPiece = new THREE.Mesh(capGeometry, cap.material);
-    capPiece.castShadow = true;
-    looseCap.add(capPiece);
-    const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.071, 0.009, 5, 10), brassMat);
-    innerRing.rotation.x = Math.PI / 2;
-    innerRing.position.y = -0.035;
-    looseCap.add(innerRing);
-    looseCap.visible = false;
-    scene.add(looseCap);
-
     const label = new THREE.Mesh(
       new THREE.CylinderGeometry(0.151, 0.151, 0.23, 10, 1, true),
       new THREE.MeshStandardMaterial({ color: index === 0 ? "#d2c4a6" : "#c1cbb4", roughness: 0.82 })
     );
     label.position.y = 0.37;
     root.add(label);
-    return { root, cap, looseCap, fill, kind: "bottle" };
+    return { root, cap, fill, kind: "bottle" };
+  }
+
+  function makeBottleCap(): ObjectVisual {
+    const root = new THREE.Group();
+    const cap = new THREE.Mesh(capGeometry, new THREE.MeshStandardMaterial({ color: "#c18a55", roughness: 0.68 }));
+    cap.position.y = 0.042;
+    cap.castShadow = true;
+    root.add(cap);
+    const ridge = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.008, 5, 10), brassMat);
+    ridge.rotation.x = Math.PI / 2;
+    ridge.position.y = 0.012;
+    root.add(ridge);
+    return { root, cap, fill: new THREE.Mesh(), kind: "bottle_cap" };
+  }
+
+  function makeTree(): ObjectVisual {
+    const root = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.12, 0.78, 7), treeBark);
+    trunk.position.y = 0.39;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    root.add(trunk);
+    const branchA = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.055, 0.36, 5), treeBark);
+    branchA.position.set(-0.12, 0.62, 0.02);
+    branchA.rotation.z = 0.62;
+    root.add(branchA);
+    const branchB = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.05, 0.32, 5), treeBark);
+    branchB.position.set(0.12, 0.67, -0.02);
+    branchB.rotation.z = -0.66;
+    root.add(branchB);
+    const crownA = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), treeLeaf);
+    crownA.position.set(0, 0.96, 0);
+    crownA.castShadow = true;
+    root.add(crownA);
+    const crownB = new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 0), treeLeafLight);
+    crownB.position.set(-0.23, 1.13, 0.08);
+    root.add(crownB);
+    const crownC = new THREE.Mesh(new THREE.IcosahedronGeometry(0.31, 0), treeLeafDark);
+    crownC.position.set(0.22, 1.14, -0.08);
+    root.add(crownC);
+    return { root, cap: new THREE.Mesh(), fill: new THREE.Mesh(), kind: "tree" };
   }
 
   function makeBook(index: number): ObjectVisual {
@@ -562,7 +719,7 @@ function createDeskScene(
     );
     spine.position.set(-0.425, 0.135, 0);
     root.add(spine);
-    return { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind: "book" };
+    return { root, cap: new THREE.Mesh(), fill: new THREE.Mesh(), kind: "book" };
   }
 
   function makePencil(index: number): ObjectVisual {
@@ -581,7 +738,7 @@ function createDeskScene(
     eraser.rotation.z = Math.PI / 2;
     eraser.position.set(-0.76, 0.055, 0);
     root.add(eraser);
-    return { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind: "pencil" };
+    return { root, cap: new THREE.Mesh(), fill: new THREE.Mesh(), kind: "pencil" };
   }
 
   let gardenSoilMesh: THREE.Mesh | null = null;
@@ -616,7 +773,7 @@ function createDeskScene(
       leaf.rotation.z = i % 2 ? 0.42 : -0.42;
       root.add(leaf);
     }
-    return { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind: "garden" };
+    return { root, cap: new THREE.Mesh(), fill: new THREE.Mesh(), kind: "garden" };
   }
 
   const modelCache = new Map<string, THREE.Group>();
@@ -628,6 +785,8 @@ function createDeskScene(
     let visual: ObjectVisual;
     const isTavernModel = (TAVERN_MODELS as readonly string[]).includes(kind);
     if (kind === "bottle") visual = makeBottle(index);
+    else if (kind === "bottle_cap") visual = makeBottleCap();
+    else if (kind === "tree") visual = makeTree();
     else if (kind === "book") visual = makeBook(index);
     else if (kind === "pencil") visual = makePencil(index);
     else if (kind === "garden") visual = makeGarden();
@@ -636,7 +795,7 @@ function createDeskScene(
       const fallback = makeTavernFallback(kind);
       fallback.userData.proceduralFallback = true;
       root.add(fallback);
-      visual = { root, cap: new THREE.Mesh(), looseCap: new THREE.Group(), fill: new THREE.Mesh(), kind };
+      visual = { root, cap: new THREE.Mesh(), fill: new THREE.Mesh(), kind };
       if (isTavernModel) {
         const targets = modelTargets.get(kind) ?? [];
         targets.push(root);
@@ -657,10 +816,11 @@ function createDeskScene(
           : kind === "table" || kind === "stool"
             ? TAVERN_SURFACE_Y
             : onTavernTable ? TAVERN_TABLE_Y : 0.431)
-      : 0.36;
+      : 0.431;
     visual.root.position.set(simulation.objectX(index) - 5, y, simulation.objectZ(index) - 5);
+    visual.root.rotation.order = "YZX";
     visual.root.rotation.y = simulation.objectYaw(index);
-    if (kind === "pencil" || kind === "book" || kind === "bottle") {
+    if (kind === "pencil" || kind === "book" || kind === "bottle" || kind === "bottle_cap" || kind === "tree") {
       visual.root.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
         child.material = Array.isArray(child.material)
@@ -1009,7 +1169,7 @@ function createDeskScene(
       character.position.y = -bounds.min.y * scale;
       character.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
-        child.castShadow = true;
+        child.castShadow = false;
         child.receiveShadow = true;
       });
 
@@ -1073,36 +1233,15 @@ function createDeskScene(
   updateSceneTriangleCount();
 
   let lowGraphics = false;
-  let ssaoPass: SSAOPass | null = null;
   document.addEventListener("deskbound:graphics", (event) => {
     const custom = event as CustomEvent<{ low: boolean }>;
     lowGraphics = custom.detail.low;
     renderer.shadowMap.enabled = !lowGraphics;
     keyLight.castShadow = !lowGraphics;
-    lampLight.castShadow = false;
     lampLight.visible = !lowGraphics;
     bulb.visible = !lowGraphics;
     dust.visible = !lowGraphics;
-    if (ssaoPass) ssaoPass.enabled = !lowGraphics;
-    bloomPass.enabled = !lowGraphics;
   });
-
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  ssaoPass = new SSAOPass(
-    scene,
-    camera,
-    Math.max(1, Math.floor(container.clientWidth * 0.65)),
-    Math.max(1, Math.floor(container.clientHeight * 0.65)),
-    24
-  );
-  ssaoPass.kernelRadius = 8;
-  ssaoPass.minDistance = 0.004;
-  ssaoPass.maxDistance = 0.14;
-  composer.addPass(ssaoPass);
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.42, 0.86);
-  composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
 
   const raycaster = new THREE.Raycaster();
   const pointerEvent = new THREE.Vector2();
@@ -1141,13 +1280,17 @@ function createDeskScene(
   }
 
   function rootHit(): { root: THREE.Object3D; point: THREE.Vector3 } | null {
-    const hit = raycaster.intersectObjects(pickables, true)[0];
-    if (!hit) return null;
-    let root: THREE.Object3D | null = hit.object;
-    while (root && root.userData.objectIndex === undefined && root.userData.sceneAction === undefined) {
-      root = root.parent;
+    const hits = raycaster.intersectObjects(pickables, true);
+    for (const hit of hits) {
+      let root: THREE.Object3D | null = hit.object;
+      while (root && root.userData.objectIndex === undefined && root.userData.sceneAction === undefined) {
+        root = root.parent;
+      }
+      if (!root) continue;
+      if (root.userData.objectIndex !== undefined && !simulation.objectActive(Number(root.userData.objectIndex))) continue;
+      return { root, point: hit.point };
     }
-    return root ? { root, point: hit.point } : null;
+    return null;
   }
 
   function pointerDeskPosition(): boolean {
@@ -1433,12 +1576,9 @@ function createDeskScene(
   const resizeObserver = new ResizeObserver(() => {
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
-    ssaoPass?.setSize(Math.floor(width * 0.65), Math.floor(height * 0.65));
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
-    composer.setSize(width, height);
-    ssaoPass?.setSize(Math.max(1, Math.floor(width * 0.65)), Math.max(1, Math.floor(height * 0.65)));
   });
   resizeObserver.observe(container);
 
@@ -1478,12 +1618,20 @@ function createDeskScene(
       const terrainNormal = terrainGeometry.getAttribute("normal") as THREE.BufferAttribute;
       const waterPosition = waterGeometry.getAttribute("position") as THREE.BufferAttribute;
       const waterNormal = waterGeometry.getAttribute("normal") as THREE.BufferAttribute;
-      terrainPosition.needsUpdate = true;
-      terrainNormal.needsUpdate = true;
-      waterPosition.needsUpdate = true;
-      waterNormal.needsUpdate = true;
-      const depthAttribute = waterGeometry.getAttribute("depth") as THREE.BufferAttribute;
-      depthAttribute.needsUpdate = true;
+      const terrainRevision = simulation.terrainRevision();
+      if (terrainRevision !== lastTerrainRevision) {
+        terrainPosition.needsUpdate = true;
+        terrainNormal.needsUpdate = true;
+        lastTerrainRevision = terrainRevision;
+      }
+      const waterRevision = simulation.waterRevision();
+      if (waterRevision !== lastWaterRevision) {
+        waterPosition.needsUpdate = true;
+        waterNormal.needsUpdate = true;
+        const depthAttribute = waterGeometry.getAttribute("depth") as THREE.BufferAttribute;
+        depthAttribute.needsUpdate = true;
+        lastWaterRevision = waterRevision;
+      }
 
       for (let index = 0; index < objectVisuals.length; index += 1) {
         const visual = objectVisuals[index];
@@ -1492,33 +1640,33 @@ function createDeskScene(
         if (colourIndex !== appliedObjectColours[index]) applyObjectColour(index, colourIndex);
 
         const transformOffset = index * 16;
-        const lift = heldIndex === index ? heldLift : 0;
-        if (visual.kind === "bottle" || visual.kind === "book" ||
-            visual.kind === "pencil" || visual.kind === "garden") {
+        const active = simulation.objectActive(index);
+        visual.root.visible = active;
+        if (!active) continue;
+        const lift = (heldIndex === index ? heldLift : 0) + (dragIndex === index ? 0.04 : 0);
+        const matrixDriven = visual.kind === "bottle" || visual.kind === "book" ||
+          visual.kind === "pencil" || visual.kind === "garden" ||
+          visual.kind === "bottle_cap" || visual.kind === "tree";
+        if (matrixDriven) {
           visual.root.matrix.fromArray(objectTransformsView, transformOffset);
           visual.root.matrix.elements[13] += lift;
           visual.root.matrixAutoUpdate = false;
           visual.root.matrixWorldNeedsUpdate = true;
         } else {
+          visual.root.matrixAutoUpdate = true;
           visual.root.position.x = objectTransformsView[transformOffset + 12] ?? 0;
           visual.root.position.z = objectTransformsView[transformOffset + 14] ?? 0;
-          visual.root.position.y = Number(visual.root.userData.baseY ?? 0.36) + lift;
-          visual.root.rotation.y = Math.atan2(
+          visual.root.position.y = Number(visual.root.userData.baseY ?? 0.431) + lift;
+          const yaw = Math.atan2(
             objectTransformsView[transformOffset + 8] ?? 0,
             objectTransformsView[transformOffset] ?? 1
           );
+          const tilt = Math.asin(THREE.MathUtils.clamp(objectTransformsView[transformOffset + 1] ?? 0, -1, 1));
+          visual.root.rotation.set(0, yaw, tilt, "YZX");
         }
 
         if (visual.kind === "bottle") {
-          const capped = simulation.objectCapOn(index);
-          visual.cap.visible = capped;
-          visual.looseCap.visible = !capped;
-          if (!capped) {
-            const bottleX = objectTransformsView[transformOffset + 12] ?? 0;
-            const bottleZ = objectTransformsView[transformOffset + 14] ?? 0;
-            visual.looseCap.position.set(bottleX + 0.28, 0.41 + lift, bottleZ + 0.18);
-            visual.looseCap.rotation.set(0, 0.18, Math.PI / 2);
-          }
+          visual.cap.visible = simulation.objectCapOn(index);
           const amount = simulation.objectVolume(index) / 0.14;
           visual.fill.scale.y = Math.max(0.002, amount);
           visual.fill.position.y = 0.08 + 0.19 * amount;
@@ -1629,8 +1777,7 @@ function createDeskScene(
           normalCount = Math.min(normalCount + 1, normalSamples.length);
         }
       }
-      if (lowGraphics) renderer.render(scene, camera);
-      else composer.render();
+      renderer.render(scene, camera);
 
       if (performanceLabel && time - lastMetricsTime >= 0.5) {
         lastMetricsTime = time;

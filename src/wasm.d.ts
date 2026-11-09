@@ -33,6 +33,7 @@ declare module "*deskbound_sim.js" {
     objectX(index: number): number;
     objectZ(index: number): number;
     objectCapOn(index: number): boolean;
+    objectActive(index: number): boolean;
     objectTilt(index: number): number;
     objectYaw(index: number): number;
     objectVolume(index: number): number;
@@ -40,6 +41,8 @@ declare module "*deskbound_sim.js" {
     objectVelocityX(index: number): number;
     objectVelocityZ(index: number): number;
     waterVolume(): number;
+    terrainRevision(): number;
+    waterRevision(): number;
   }
 
   export function wasmMemory(): WebAssembly.Memory;

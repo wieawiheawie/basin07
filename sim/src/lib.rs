@@ -31,6 +31,7 @@ const ACTION_IDS: [&str; 12] = [
 #[derive(Clone, Copy, PartialEq)]
 enum ObjectKind {
     Bottle,
+    BottleCap,
     Book,
     Pencil,
     Garden,
@@ -45,6 +46,7 @@ enum ObjectKind {
     Sack,
     Candle,
     Lantern,
+    Tree,
     PlankFloor,
 }
 
@@ -126,6 +128,7 @@ impl RigidBody {
         match kind {
             ObjectKind::Pencil => Self::new(0.035, 0.95, 0.28, 0.065),
             ObjectKind::Bottle => Self::new(0.16, 1.8, 0.16, 0.115),
+            ObjectKind::BottleCap => Self::new(f32::INFINITY, 1.8, 0.22, 0.042),
             ObjectKind::Book => Self::new(0.42, 2.4, 0.08, 0.19),
             ObjectKind::Garden | ObjectKind::PlankFloor => Self::new(f32::INFINITY, 1.0, 0.0, 0.0),
             ObjectKind::Table => Self::new(5.5, 3.5, 0.04, 0.0),
@@ -139,6 +142,7 @@ impl RigidBody {
             ObjectKind::Sack => Self::new(0.38, 2.4, 0.05, 0.16),
             ObjectKind::Candle => Self::new(0.055, 1.7, 0.05, 0.045),
             ObjectKind::Lantern => Self::new(0.48, 1.9, 0.10, 0.13),
+            ObjectKind::Tree => Self::new(0.72, 2.0, 0.06, 0.19),
         }
     }
 
@@ -167,6 +171,9 @@ pub struct Simulation {
     terrain_normals: Vec<f32>,
     water_positions: Vec<f32>,
     water_normals: Vec<f32>,
+    terrain_dirty: bool,
+    terrain_revision: u32,
+    water_revision: u32,
     objects: Vec<WorldObject>,
     object_transforms: Vec<f32>,
     object_colours: Vec<u8>,
@@ -247,6 +254,13 @@ impl Simulation {
             WorldObject { name: "barrel_1", kind: ObjectKind::Barrel, x: 5.55, z: 6.25, cap_on: true, volume: INITIAL_BARREL_VOLUME, tilt: 0.0, target_tilt: 0.0, yaw: 0.0 , colour_index: 0 },
             WorldObject { name: "crate_1", kind: ObjectKind::Crate, x: 6.15, z: 5.45, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.2 , colour_index: 0 },
             WorldObject { name: "sack_1", kind: ObjectKind::Sack, x: 5.75, z: 5.95, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.3 , colour_index: 0 },
+            WorldObject { name: "bottle_cap_1", kind: ObjectKind::BottleCap, x: 0.2, z: 0.2, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "bottle_cap_2", kind: ObjectKind::BottleCap, x: 0.3, z: 0.2, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "tree_1", kind: ObjectKind::Tree, x: 1.25, z: 1.35, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.0, colour_index: 0 },
+            WorldObject { name: "tree_2", kind: ObjectKind::Tree, x: 8.95, z: 1.40, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.35, colour_index: 0 },
+            WorldObject { name: "tree_3", kind: ObjectKind::Tree, x: 1.35, z: 8.75, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.2, colour_index: 0 },
+            WorldObject { name: "tree_4", kind: ObjectKind::Tree, x: 9.0, z: 8.7, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: 0.25, colour_index: 0 },
+            WorldObject { name: "tree_5", kind: ObjectKind::Tree, x: 4.0, z: 1.0, cap_on: false, volume: 0.0, tilt: 0.0, target_tilt: 0.0, yaw: -0.1, colour_index: 0 },
         ];
 
         let people = vec![
@@ -269,6 +283,9 @@ impl Simulation {
             terrain_normals: vec![0.0; GRID_CELLS * 3],
             water_positions: vec![0.0; GRID_CELLS * 3],
             water_normals: vec![0.0; GRID_CELLS * 3],
+            terrain_dirty: true,
+            terrain_revision: 0,
+            water_revision: 0,
             people_buffer: vec![0.0; people.len() * PERSON_STRIDE],
             objects,
             object_transforms,
@@ -384,14 +401,12 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = uncapObject)]
     pub fn uncap_object(&mut self, index: usize) -> bool {
-        let Some(object) = self.objects.get_mut(index) else {
-            return false;
-        };
-        if object.kind != ObjectKind::Bottle || !object.cap_on {
+        if !self.objects.get(index).is_some_and(|object| object.kind == ObjectKind::Bottle && object.cap_on) {
             return false;
         }
-        object.cap_on = false;
+        self.detach_bottle_cap(index);
         self.discover_action("action.uncap");
+        self.sync_object_transforms();
         true
     }
 
@@ -521,6 +536,7 @@ impl Simulation {
             .get(index)
             .map(|object| match object.kind {
                 ObjectKind::Bottle => "bottle",
+                ObjectKind::BottleCap => "bottle_cap",
                 ObjectKind::Book => "book",
                 ObjectKind::Pencil => "pencil",
                 ObjectKind::Garden => "garden",
@@ -535,6 +551,7 @@ impl Simulation {
                 ObjectKind::Sack => "sack",
                 ObjectKind::Candle => "candle",
                 ObjectKind::Lantern => "lantern",
+                ObjectKind::Tree => "tree",
                 ObjectKind::PlankFloor => "plank_floor",
             })
             .unwrap_or("")
@@ -553,7 +570,12 @@ impl Simulation {
 
     #[wasm_bindgen(js_name = objectCapOn)]
     pub fn object_cap_on(&self, index: usize) -> bool {
-        self.objects.get(index).is_some_and(|object| object.cap_on)
+        self.objects.get(index).is_some_and(|object| object.cap_on && object.kind == ObjectKind::Bottle)
+    }
+
+    #[wasm_bindgen(js_name = objectActive)]
+    pub fn object_active(&self, index: usize) -> bool {
+        self.objects.get(index).is_some_and(|object| object.kind != ObjectKind::BottleCap || object.cap_on)
     }
 
     #[wasm_bindgen(js_name = objectTilt)]
@@ -586,6 +608,16 @@ impl Simulation {
         self.bodies.get(index).map(|body| body.vz).unwrap_or(0.0)
     }
 
+    #[wasm_bindgen(js_name = terrainRevision)]
+    pub fn terrain_revision(&self) -> u32 {
+        self.terrain_revision
+    }
+
+    #[wasm_bindgen(js_name = waterRevision)]
+    pub fn water_revision(&self) -> u32 {
+        self.water_revision
+    }
+
     #[wasm_bindgen(js_name = waterVolume)]
     pub fn water_volume(&self) -> f32 {
         water::total_volume(&self.water)
@@ -606,6 +638,29 @@ impl Default for Simulation {
 }
 
 impl Simulation {
+    fn detach_bottle_cap(&mut self, bottle_index: usize) {
+        let Some(bottle) = self.objects.get(bottle_index) else { return; };
+        let (bottle_x, bottle_z, bottle_yaw, bottle_vx, bottle_vz, cap_name) = (
+            bottle.x,
+            bottle.z,
+            bottle.yaw,
+            self.bodies[bottle_index].vx,
+            self.bodies[bottle_index].vz,
+            if bottle.name == "bottle_1" { "bottle_cap_1" } else { "bottle_cap_2" },
+        );
+        self.objects[bottle_index].cap_on = false;
+        let Some(cap_index) = self.objects.iter().position(|object| object.name == cap_name) else { return; };
+        let side = bottle_yaw + std::f32::consts::FRAC_PI_2;
+        self.objects[cap_index].x = (bottle_x + bottle_yaw.cos() * 0.13 + side.cos() * 0.055).clamp(0.08, 9.92);
+        self.objects[cap_index].z = (bottle_z + bottle_yaw.sin() * 0.13 + side.sin() * 0.055).clamp(0.08, 9.92);
+        self.objects[cap_index].yaw = bottle_yaw;
+        self.objects[cap_index].cap_on = true;
+        self.bodies[cap_index] = RigidBody::new(0.022, 1.45, 0.28, 0.045);
+        self.bodies[cap_index].vx = bottle_vx + bottle_yaw.cos() * 0.16 + side.cos() * 0.08;
+        self.bodies[cap_index].vz = bottle_vz + bottle_yaw.sin() * 0.16 + side.sin() * 0.08;
+        self.bodies[cap_index].angular_velocity = 2.4;
+    }
+
     fn fixed_step(&mut self, dt: f32) {
         self.elapsed += dt;
         self.energy = (self.energy + dt * 1.4).min(100.0);
@@ -613,9 +668,9 @@ impl Simulation {
 
         {
             let (objects, water) = (&mut self.objects, &mut self.water);
-            for object in objects.iter_mut().filter(|object| object.kind == ObjectKind::Bottle) {
+            for object in objects.iter_mut().filter(|object| object.kind == ObjectKind::Bottle || object.kind == ObjectKind::Tree || object.kind == ObjectKind::Stool || object.kind == ObjectKind::Lantern || object.kind == ObjectKind::Barrel || object.kind == ObjectKind::Crate || object.kind == ObjectKind::Sack || object.kind == ObjectKind::Tankard || object.kind == ObjectKind::Mug || object.kind == ObjectKind::Candle) {
                 let difference = object.target_tilt - object.tilt;
-                object.tilt += difference.clamp(-dt * 1.15, dt * 1.15);
+                object.tilt += difference.clamp(-dt * 2.1, dt * 2.1);
 
                 if !object.cap_on && object.tilt.abs() > 0.20 && object.volume > 0.0 {
                     let tilt_ratio = (object.tilt.abs() / std::f32::consts::FRAC_PI_2).clamp(0.0, 1.0);
@@ -717,7 +772,10 @@ impl Simulation {
                 self.discover_action("action.list");
                 Ok(format!(
                     "Here is everything on the desk: {}.",
-                    self.objects.iter().map(|object| object.name).collect::<Vec<_>>().join(", ")
+                    self.objects.iter()
+                        .filter(|object| object.kind != ObjectKind::BottleCap || object.cap_on)
+                        .map(|object| object.name)
+                        .collect::<Vec<_>>().join(", ")
                 ))
             }
             Command::Look(name) => {
@@ -731,6 +789,7 @@ impl Simulation {
                         if object.tilt > 0.15 { "tipped" } else { "upright" },
                         (object.volume / INITIAL_BOTTLE_VOLUME * 100.0).clamp(0.0, 100.0)
                     ),
+                    ObjectKind::BottleCap => "loose bottle cap".to_owned(),
                     ObjectKind::Book => "closed book".to_owned(),
                     ObjectKind::Pencil => "wooden pencil".to_owned(),
                     ObjectKind::Garden => "soil and small sprouts".to_owned(),
@@ -749,6 +808,7 @@ impl Simulation {
                     ObjectKind::Sack => "cloth storage sack".to_owned(),
                     ObjectKind::Candle => "lit candle".to_owned(),
                     ObjectKind::Lantern => "warm lantern".to_owned(),
+                    ObjectKind::Tree => format!("small tree, {}", if object.tilt.abs() > 0.1 { "toppled" } else { "standing" }),
                     ObjectKind::PlankFloor => "plank-floor tavern platform".to_owned(),
                 };
                 Ok(format!(
@@ -768,24 +828,21 @@ impl Simulation {
                 ))
             }
             Command::Uncap(name) => {
-                let object_name = {
-                    let object = self.objects.iter_mut().find(|object| object.name == name)
-                        .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
-                    if object.kind != ObjectKind::Bottle {
-                        let uncap_word = self.glossary.word_for("action.uncap");
-                        return Err(format!(
-                            "{} doesn't have a cap. Try {} bottle_1 or {} bottle_2.",
-                            object.name, uncap_word, uncap_word
-                        ));
-                    }
-                    if !object.cap_on {
-                        return Ok(format!("{} is already uncapped.", object.name));
-                    }
-                    object.cap_on = false;
-                    object.name
-                };
+                let index = self.objects.iter().position(|object| object.name == name)
+                    .ok_or_else(|| format!("I can't find '{name}'. Try list to see the names on your desk."))?;
+                if self.objects[index].kind != ObjectKind::Bottle {
+                    let uncap_word = self.glossary.word_for("action.uncap");
+                    return Err(format!(
+                        "{} doesn't have a cap. Try {} bottle_1 or {} bottle_2.",
+                        self.objects[index].name, uncap_word, uncap_word
+                    ));
+                }
+                if !self.objects[index].cap_on {
+                    return Ok(format!("{} is already uncapped.", self.objects[index].name));
+                }
+                self.detach_bottle_cap(index);
                 self.discover_action("action.uncap");
-                Ok(format!("The cap comes free from {object_name} and rests beside it."))
+                Ok(format!("The cap pops off {} and becomes a separate object.", name))
             }
             Command::Tap(name) => {
                 let object_name = {
@@ -1018,6 +1075,9 @@ impl Simulation {
 
     fn update_rigid_bodies(&mut self, dt: f32) {
         for index in 0..self.objects.len() {
+            if self.objects[index].kind == ObjectKind::BottleCap && !self.objects[index].cap_on {
+                continue;
+            }
             let inverse_mass = self.bodies[index].inverse_mass();
             if inverse_mass <= 0.0 {
                 continue;
@@ -1137,13 +1197,23 @@ impl Simulation {
                 self.objects[b].x += nx * correction * inverse_b;
                 self.objects[b].z += nz * correction * inverse_b;
 
-                if normal_impulse > 0.05 {
-                    let hit_tilt = if nz.abs() > 0.24 { nz.signum() } else if nx >= 0.0 { 1.0 } else { -1.0 };
-                    if self.objects[a].kind == ObjectKind::Bottle && !self.objects[a].cap_on {
-                        self.objects[a].target_tilt = hit_tilt * std::f32::consts::FRAC_PI_2;
+                if normal_impulse > 0.045 {
+                    // Contacts tip tall/light props around their base. The visual and
+                    // simulation transforms stay in the same WASM-owned object state.
+                    let topple_a = matches!(self.objects[a].kind, ObjectKind::Bottle | ObjectKind::Tree | ObjectKind::Stool | ObjectKind::Lantern | ObjectKind::Barrel | ObjectKind::Crate | ObjectKind::Sack | ObjectKind::Candle | ObjectKind::Tankard | ObjectKind::Mug);
+                    let topple_b = matches!(self.objects[b].kind, ObjectKind::Bottle | ObjectKind::Tree | ObjectKind::Stool | ObjectKind::Lantern | ObjectKind::Barrel | ObjectKind::Crate | ObjectKind::Sack | ObjectKind::Candle | ObjectKind::Tankard | ObjectKind::Mug);
+                    let angle = if self.objects[a].kind == ObjectKind::Tree || self.objects[b].kind == ObjectKind::Tree {
+                        (0.95 + normal_impulse * 0.9).clamp(0.95, 1.52)
+                    } else {
+                        (0.42 + normal_impulse * 0.65).clamp(0.42, 1.35)
+                    };
+                    if topple_a {
+                        self.objects[a].yaw = nz.atan2(-nx);
+                        self.objects[a].target_tilt = angle;
                     }
-                    if self.objects[b].kind == ObjectKind::Bottle && !self.objects[b].cap_on {
-                        self.objects[b].target_tilt = -hit_tilt * std::f32::consts::FRAC_PI_2;
+                    if topple_b {
+                        self.objects[b].yaw = (-nz).atan2(nx);
+                        self.objects[b].target_tilt = angle;
                     }
                 }
             }
@@ -1362,26 +1432,29 @@ impl Simulation {
                         let garden_dx = 5.0 - self.objects[bottle_index].x;
                         let garden_dz = 5.0 - self.objects[bottle_index].z;
                         let garden_distance = (garden_dx * garden_dx + garden_dz * garden_dz).sqrt();
-                        let person = &mut self.people[index];
-                        person.heading = garden_dz.atan2(garden_dx);
-                        person.activity = 3;
-                        person.speed = 0.0;
-
-                        if person.action_timer <= 0.0 {
+                        {
+                            let person = &mut self.people[index];
+                            person.heading = garden_dz.atan2(garden_dx);
+                            person.activity = 3;
+                            person.speed = 0.0;
+                        }
+                        if self.people[index].action_timer <= 0.0 {
                             if self.objects[bottle_index].cap_on {
-                                self.objects[bottle_index].cap_on = false;
-                                person.action_timer = 0.55;
+                                self.detach_bottle_cap(bottle_index);
+                                self.people[index].action_timer = 0.55;
                             } else if garden_distance > 0.72 {
-                                self.objects[bottle_index].yaw = person.heading;
+                                let heading = garden_dz.atan2(garden_dx);
+                                self.objects[bottle_index].yaw = heading;
                                 self.objects[bottle_index].target_tilt = std::f32::consts::FRAC_PI_2;
                                 self.bodies[bottle_index].vx += garden_dx / garden_distance.max(0.001) * 0.92;
                                 self.bodies[bottle_index].vz += garden_dz / garden_distance.max(0.001) * 0.92;
                                 self.bodies[bottle_index].angular_velocity += 0.45;
-                                person.action_timer = 1.05;
+                                self.people[index].action_timer = 1.05;
                             } else {
-                                self.objects[bottle_index].yaw = person.heading;
+                                let heading = garden_dz.atan2(garden_dx);
+                                self.objects[bottle_index].yaw = heading;
                                 self.objects[bottle_index].target_tilt = std::f32::consts::FRAC_PI_2;
-                                person.action_timer = 0.8;
+                                self.people[index].action_timer = 0.8;
                             }
                         }
                     }
@@ -1451,6 +1524,7 @@ impl Simulation {
     }
 
     fn carve_line(&mut self, start: (f32, f32), end: (f32, f32), depth: f32, width: f32) {
+        self.terrain_dirty = true;
         let dx = end.0 - start.0;
         let dz = end.1 - start.1;
         let length_sq = dx * dx + dz * dz;
@@ -1497,15 +1571,11 @@ impl Simulation {
             let offset = index * OBJECT_MATRIX_STRIDE;
             let (sin_yaw, cos_yaw) = object.yaw.sin_cos();
             let (sin_tilt, cos_tilt) = object.tilt.sin_cos();
-            let y = if object.kind == ObjectKind::Pencil {
-                let grid_x = (object.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
-                    .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-                let grid_z = (object.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
-                    .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-                0.36 + self.height[grid_z * GRID_SIZE + grid_x]
-            } else {
-                0.36
-            };
+            let grid_x = (object.x / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+            let grid_z = (object.z / DESK_SIZE * (GRID_SIZE as f32 - 1.0))
+                .round().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+            let y = 0.431 + self.height[grid_z * GRID_SIZE + grid_x];
 
             // Column-major Y-yaw × Z-tilt transform, ready for THREE.Matrix4.fromArray.
             self.object_transforms[offset] = cos_yaw * cos_tilt;
@@ -1547,20 +1617,22 @@ impl Simulation {
                 let base = index * 3;
                 let world_x = -DESK_SIZE * 0.5 + x as f32 * CELL_SIZE;
                 let world_z = -DESK_SIZE * 0.5 + z as f32 * CELL_SIZE;
-                let left = self.height[z * GRID_SIZE + x.saturating_sub(1)];
-                let right = self.height[z * GRID_SIZE + (x + 1).min(GRID_SIZE - 1)];
-                let north = self.height[z.saturating_sub(1) * GRID_SIZE + x];
-                let south = self.height[(z + 1).min(GRID_SIZE - 1) * GRID_SIZE + x];
-                let nx = -(right - left) / (2.0 * CELL_SIZE);
-                let nz = -(south - north) / (2.0 * CELL_SIZE);
-                let length = (nx * nx + 1.0 + nz * nz).sqrt();
 
-                self.terrain_positions[base] = world_x;
-                self.terrain_positions[base + 1] = 0.431 + self.height[index];
-                self.terrain_positions[base + 2] = world_z;
-                self.terrain_normals[base] = nx / length;
-                self.terrain_normals[base + 1] = 1.0 / length;
-                self.terrain_normals[base + 2] = nz / length;
+                if self.terrain_dirty {
+                    let left = self.height[z * GRID_SIZE + x.saturating_sub(1)];
+                    let right = self.height[z * GRID_SIZE + (x + 1).min(GRID_SIZE - 1)];
+                    let north = self.height[z.saturating_sub(1) * GRID_SIZE + x];
+                    let south = self.height[(z + 1).min(GRID_SIZE - 1) * GRID_SIZE + x];
+                    let nx = -(right - left) / (2.0 * CELL_SIZE);
+                    let nz = -(south - north) / (2.0 * CELL_SIZE);
+                    let length = (nx * nx + 1.0 + nz * nz).sqrt();
+                    self.terrain_positions[base] = world_x;
+                    self.terrain_positions[base + 1] = 0.431 + self.height[index];
+                    self.terrain_positions[base + 2] = world_z;
+                    self.terrain_normals[base] = nx / length;
+                    self.terrain_normals[base + 1] = 1.0 / length;
+                    self.terrain_normals[base + 2] = nz / length;
+                }
 
                 let wet = self.water[index] > 0.0015;
                 self.water_positions[base] = world_x;
@@ -1576,6 +1648,11 @@ impl Simulation {
                 self.water_normals[base + 2] = 0.0;
             }
         }
+        if self.terrain_dirty {
+            self.terrain_dirty = false;
+            self.terrain_revision = self.terrain_revision.wrapping_add(1);
+        }
+        self.water_revision = self.water_revision.wrapping_add(1);
     }
 }
 
@@ -1706,6 +1783,19 @@ mod tests {
         assert!(!simulation.objects[0].cap_on);
         assert!(!simulation.uncap_object(0));
         assert!(!simulation.uncap_object(5));
+    }
+
+    #[test]
+    fn terrain_revision_only_changes_after_a_carve() {
+        let mut simulation = ready_simulation();
+        let initial = simulation.terrain_revision;
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.terrain_revision, initial);
+        simulation.carve_line((5.0, 5.0), (5.6, 5.0), 0.05, 0.2);
+        simulation.refresh_mesh_buffers();
+        assert_eq!(simulation.terrain_revision, initial.wrapping_add(1));
+        simulation.fixed_step(FIXED_STEP);
+        assert_eq!(simulation.terrain_revision, initial.wrapping_add(1));
     }
 
     #[test]
@@ -1920,6 +2010,41 @@ mod tests {
         assert!(simulation.bodies[bottle].vx > 0.0);
         simulation.update_rigid_bodies(FIXED_STEP);
         assert!(simulation.objects[bottle].x > bottle_before_release);
+    }
+
+    #[test]
+    fn uncapping_detaches_a_physical_cap_that_moves_independently() {
+        let mut simulation = ready_simulation();
+        let bottle = simulation.objects.iter().position(|object| object.name == "bottle_1").unwrap();
+        let cap = simulation.objects.iter().position(|object| object.name == "bottle_cap_1").unwrap();
+        let initial_cap_x = simulation.objects[cap].x;
+        assert!(!simulation.object_active(cap));
+        assert!(simulation.uncap_object(bottle));
+        assert!(!simulation.objects[bottle].cap_on);
+        assert!(simulation.object_active(cap));
+        assert!(simulation.bodies[cap].inverse_mass() > 0.0);
+        assert_ne!(simulation.objects[cap].x, initial_cap_x);
+        let detached_x = simulation.objects[cap].x;
+        simulation.objects[bottle].x += 1.0;
+        assert_eq!(simulation.objects[cap].x, detached_x);
+        simulation.bodies[cap].vx = 0.8;
+        for _ in 0..30 { simulation.update_rigid_bodies(FIXED_STEP); }
+        assert!(simulation.objects[cap].x > detached_x);
+    }
+
+    #[test]
+    fn tree_trunks_are_physical_and_can_be_tipped() {
+        let mut simulation = ready_simulation();
+        let tree = simulation.objects.iter().position(|object| object.kind == ObjectKind::Tree).unwrap();
+        let pencil = 5;
+        simulation.objects[tree].x = 4.0;
+        simulation.objects[tree].z = 4.0;
+        simulation.objects[pencil].x = 3.75;
+        simulation.objects[pencil].z = 4.0;
+        simulation.bodies[pencil].vx = 2.6;
+        for _ in 0..10 { simulation.update_rigid_bodies(FIXED_STEP); }
+        assert!(simulation.objects[tree].target_tilt > 0.25);
+        assert!(simulation.bodies[tree].vx.abs() > 0.01);
     }
 
     #[test]

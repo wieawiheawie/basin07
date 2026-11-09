@@ -22,7 +22,7 @@ Open forwarded port 5173. Without a local asset import, procedural props remain 
 
 ## Playing with the desk
 
-The main interaction is direct mouse manipulation. Left-drag any item to move it. Right-click an item to pick it up, move it with the pointer, then right-click again to put it down. Hold both mouse buttons and drag over the wooden tabletop to carve a groove, or over the garden soil to cut a visible furrow. Hold both buttons on a bottle to uncap it. Middle-drag rotates the camera and the scroll wheel zooms. Click the **journal book** to open the wordbook, or click the **desk lamp** to switch between High and Low graphics. The floating controls remain available too. The **Commands** button opens the optional scripting console when you want precise or automated actions.
+The main interaction is direct mouse manipulation. Left-drag any item to move it. Right-click an item to pick it up, move it with the pointer, then right-click again to put it down. Hold both mouse buttons and drag across the meadow or garden soil to carve a groove. Hold both buttons on a bottle to uncap it; the cap detaches into an independent loose object. Middle-drag rotates the camera and the scroll wheel zooms. Click the **journal book** to open the wordbook, or click the **desk lamp** to switch between High and Low graphics. The floating controls remain available too. The **Commands** button opens the optional scripting console when you want precise or automated actions.
 
 ## Commands
 
@@ -74,14 +74,14 @@ The help command lists discovered commands. Unknown command words produce a clos
 
 The medieval pack integration uses Furniture_01.fbx as the tavern table. The pack does not include an exact stool, bread-basket or lantern asset, so the closest included seat/container/fire props are used, with procedural fallbacks for missing or unsuitable models. See ASSETS.md for the mapping and licence.
 
-The Rust simulation owns fixed-step physics for desk props: mass, friction, restitution, collisions, slope response and water-flow drag. Grabbing uses a spring constraint, so heavy objects lag behind the cursor and keep their momentum when released. Three.js reads object transforms and colour bytes from WASM memory. This is a compact custom tabletop solver, not a full 3D rigid-body engine.
+The Rust simulation owns fixed-step physics for desk props, detached bottle caps and five knockable trees: mass, friction, restitution, collisions, slope response, water-flow drag and impact-driven tipping. Caps have their own positions and momentum after uncapping. Grabbing uses a spring constraint, so heavy objects lag behind the cursor and keep their momentum when released. This is a compact custom tabletop solver, not a full 3D rigid-body engine.
 
-The five residents are animated Quaternius CC0 characters. They select tasks from current world conditions and individual needs: they walk to bottles, uncap and push them toward dry soil, dig furrows, eat and rest. Their actions update the same Rust physics and water simulation as player interactions. See ASSETS.md for model links and licences. The garden remains decorative; mugs do not yet store water.
+The five residents are animated Quaternius CC0 characters. They select tasks from current world conditions and individual needs: they walk to bottles, uncap and push them toward dry soil, dig furrows, eat and rest. Their actions update the same Rust physics and water simulation as player interactions. See ASSETS.md for model links and licences. The garden can be carved and watered, but crop growth and mug water storage are not implemented yet.
 
 ## Project layout
 
-- sim/ — fixed-step heightmap, water, objects, people, scripting lexer/parser/interpreter and pencil physics in Rust.
-- src/scene.ts — Three.js room, model loading, procedural fallbacks and WASM-memory views.
+- sim/ — fixed-step heightmap, water, objects, detachable caps, resident agents, scripting lexer/parser/interpreter and tabletop collision physics in Rust.
+- src/scene.ts — Three.js meadow, instanced grass/pebbles, knockable trees, model loading, procedural fallbacks and versioned WASM-memory views.
 - src/console.ts — prompt, history, autocomplete, discovered-word help and queue feedback.
 - glossary.json — display words mapped to internal action/syntax IDs.
 - scripts/import_medieval_props.py — selective local-only Unity package importer.
