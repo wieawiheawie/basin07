@@ -1204,6 +1204,8 @@ impl Simulation {
                     let topple_b = matches!(self.objects[b].kind, ObjectKind::Bottle | ObjectKind::Tree | ObjectKind::Stool | ObjectKind::Lantern | ObjectKind::Barrel | ObjectKind::Crate | ObjectKind::Sack | ObjectKind::Candle | ObjectKind::Tankard | ObjectKind::Mug);
                     let angle = if self.objects[a].kind == ObjectKind::Tree || self.objects[b].kind == ObjectKind::Tree {
                         (0.95 + normal_impulse * 0.9).clamp(0.95, 1.52)
+                    } else if self.objects[a].kind == ObjectKind::Bottle || self.objects[b].kind == ObjectKind::Bottle {
+                        (0.66 + normal_impulse * 0.65).clamp(0.66, 1.42)
                     } else {
                         (0.42 + normal_impulse * 0.65).clamp(0.42, 1.35)
                     };
