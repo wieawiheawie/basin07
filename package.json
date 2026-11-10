@@ -4,23 +4,21 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "wasm:dev": "wasm-pack build sim --target web --dev --out-dir ../pkg --out-name deskbound_sim --no-pack",
-    "wasm:release": "wasm-pack build sim --target web --release --out-dir ../pkg --out-name deskbound_sim --no-pack && npm run wasm:optimize",
-    "wasm:optimize": "wasm-opt pkg/deskbound_sim_bg.wasm -Oz --strip-debug -o pkg/deskbound_sim_bg.opt.wasm && mv pkg/deskbound_sim_bg.opt.wasm pkg/deskbound_sim_bg.wasm",
-    "dev": "npm run wasm:dev && vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "build": "npm run wasm:release && npm run typecheck && vite build",
-    "test": "cargo test --manifest-path sim/Cargo.toml && vitest run",
-    "models:import": "python3 scripts/import_medieval_props.py"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
     "three": "0.180.0"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "@types/three": "0.180.0",
     "typescript": "5.9.3",
     "vite": "7.1.7",
-    "vitest": "3.2.4",
-    "@types/node": "^24.0.0"
+    "vitest": "3.2.4"
   }
 }

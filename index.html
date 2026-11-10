@@ -3,73 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#211f1b" />
-    <meta name="description" content="Deskbound — a miniature meadow world on your desk." />
     <title>Deskbound</title>
   </head>
   <body>
-    <main id="scene" class="scene">
-      <div class="vignette" aria-hidden="true"></div>
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark"><span></span><span></span><span></span></div>
-          <div>
-            <div class="brand-name">deskbound</div>
-            <div class="brand-subtitle">a little meadow, made to be played with</div>
-          </div>
-        </div>
-        <div class="top-tools">
-          <div class="energy-card">
-            <div class="energy-top"><span>ATTENTION</span><span id="energy-label">100 energy</span></div>
-            <div class="energy-track"><div id="energy-fill" class="energy-fill"></div></div>
-            <div id="queue-label" class="queue-label">0 queued</div>
-          </div>
-          <button id="commands-toggle" class="quiet-button command-toggle" type="button" aria-expanded="false" aria-controls="command-panel">Commands</button>
-          <button id="low-toggle" class="quiet-button" type="button" aria-pressed="false">Low graphics</button>
-          <button id="help-toggle" class="help-button" type="button" aria-expanded="false" aria-controls="help-panel">?</button>
-        </div>
-      </header>
-
-      <div class="world-caption">
-        <span class="caption-dot"></span>
-        <span>THE MEADOW</span>
-        <span class="caption-divider"></span>
-        <span id="hover-label" class="hover-label"></span>
-        <span id="interaction-hint" class="interaction-hint">LEFT-DRAG · RIGHT-CLICK PICK UP / RELEASE · KNOCK THINGS OVER · BOTH BUTTONS DIG / UNCAP</span>
-        <span id="performance-label" class="performance-label">Scene — tris · Normal — · Low —</span>
-      </div>
-
-      <aside id="help-panel" class="help-panel" aria-label="Discovered words">
-        <div class="panel-heading">
-          <div><span class="eyebrow">THE JOURNAL</span><h2>The Journal</h2></div>
-          <span class="panel-mark">?</span>
-        </div>
-        <p class="panel-intro">Your discovered words, actions and notes are collected here.</p>
-        <div id="help-list" class="help-list"></div>
-      </aside>
-
-      <footer id="command-panel" class="command-dock" aria-label="Optional command console">
-        <div class="dock-heading">
-          <div class="dock-title">
-            <span class="command-symbol">⌁</span>
-            <div><strong>Speak to the desk</strong><span>Commands are small. The world takes its time.</span></div>
-          </div>
-          <div class="dock-actions">
-            <span class="dock-hint">Scripts remain available here when you need them</span>
-            <button id="commands-close" class="panel-close" type="button" aria-label="Close commands">×</button>
-          </div>
-        </div>
-        <div class="prompt-log" id="prompt-log" aria-live="polite"></div>
-        <form id="command-form" class="command-form" autocomplete="off">
-          <span class="prompt-chevron">›</span>
-          <input id="command-input" name="command" type="text" spellcheck="false" autocomplete="off" placeholder="try: list" aria-label="Enter a command" />
-          <span class="enter-hint">ENTER ↵</span>
-          <button class="send-button" type="submit" aria-label="Send command">↗</button>
-          <div id="suggestions" class="suggestions" role="listbox"></div>
-        </form>
-      </footer>
-      <div id="loading-status" class="loading-status">Waking the desk…</div>
-    </main>
+    <canvas id="view"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div id="loading" class="loading">Loading…</div>
+    <div class="hint">Left-drag the crate · right-drag to orbit · scroll to zoom</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
