@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Sky } from "three/examples/jsm/objects/Sky.js";
+import { createAtmosphere } from "./atmosphere";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./style.css";
 import { createCrate, CRATE_SIZE } from "./crate";
@@ -25,9 +25,7 @@ async function start(): Promise<void> {
   renderer.toneMappingExposure = 0.9;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2("#b8c8d6", 0.003);
-
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 800);
   camera.position.set(0, 27, 33);
 
   const controls = new OrbitControls(camera, canvas);
@@ -52,28 +50,13 @@ async function start(): Promise<void> {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
-  scene.add(sun, sun.target, new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.3));
-
-  // Procedural sky: visible backdrop plus an image-based environment so lighting matches the sky.
+  const hemi = new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.3);
+  scene.add(sun, sun.target, hemi);
   const sunDir = new THREE.Vector3(14, 22, 10).normalize();
-  const makeSky = (scale: number): Sky => {
-    const sky = new Sky();
-    sky.scale.setScalar(scale);
-    const u = sky.material.uniforms;
-    u.turbidity!.value = 2.5;
-    u.rayleigh!.value = 2.2;
-    u.mieCoefficient!.value = 0.004;
-    u.mieDirectionalG!.value = 0.8;
-    u.sunPosition!.value.copy(sunDir);
-    return sky;
-  };
-  const envScene = new THREE.Scene();
-  envScene.add(makeSky(50));
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(envScene, 0.02).texture;
-  scene.environmentIntensity = 0.55;
-  pmrem.dispose();
-  scene.add(makeSky(250));
+  const atmosphere = createAtmosphere({ renderer, scene, sun, hemi, sunDir });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "n" || event.key === "N") atmosphere.toggle();
+  });
 
   const table = createTable();
   const terrain = createTerrain();
@@ -177,6 +160,7 @@ async function start(): Promise<void> {
     sun.position.set(state.position.x + 14, 22, state.position.z + 10);
 
     const clearance = state.position.y - CRATE_SIZE / 2 - groundHeight(state.position.x, state.position.z);
+    atmosphere.update(dt, clock.elapsedTime);
     controls.update();
     camera.updateMatrixWorld();
     camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
