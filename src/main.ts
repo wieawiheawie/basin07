@@ -5,13 +5,13 @@ import { createCrate, CRATE_SIZE } from "./crate";
 import { createGrass } from "./grass";
 import { createPhysics } from "./physics";
 import { createTable } from "./table";
-import { createTerrain, groundHeight } from "./terrain";
+import { createTerrain, groundHeight, HALF } from "./terrain";
 
 const params = new URLSearchParams(location.search);
-const MAX_BLADES = 220000;
+const MAX_BLADES = 320000;
 const fixedBlades = params.has("blades");
 const LIFT = 0.8;
-const LIMIT = 9.25;
+const LIMIT = HALF - 0.75;
 
 async function start(): Promise<void> {
   const canvas = document.getElementById("view") as HTMLCanvasElement;
@@ -25,15 +25,15 @@ async function start(): Promise<void> {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#1d2328");
 
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 160);
-  camera.position.set(0, 17, 21);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
+  camera.position.set(0, 27, 33);
 
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.3, 0);
   controls.enableDamping = true;
   controls.enablePan = false;
   controls.minDistance = 3;
-  controls.maxDistance = 55;
+  controls.maxDistance = 90;
   controls.maxPolarAngle = 1.5;
   controls.mouseButtons = { LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 
@@ -41,16 +41,16 @@ async function start(): Promise<void> {
   sun.position.set(14, 22, 10);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  sun.shadow.camera.left = -16;
-  sun.shadow.camera.right = 16;
-  sun.shadow.camera.top = 16;
-  sun.shadow.camera.bottom = -16;
+  sun.shadow.camera.left = -11;
+  sun.shadow.camera.right = 11;
+  sun.shadow.camera.top = 11;
+  sun.shadow.camera.bottom = -11;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 80;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
-  scene.add(sun, new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.85));
+  scene.add(sun, sun.target, new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.85));
 
   const table = createTable();
   const terrain = createTerrain();
@@ -146,6 +146,10 @@ async function start(): Promise<void> {
     const state = physics.crate();
     crate.position.copy(state.position);
     crate.quaternion.copy(state.quaternion);
+
+    // Keep the shadow map centred on the crate so shadows stay sharp on a big table.
+    sun.target.position.set(state.position.x, 0, state.position.z);
+    sun.position.set(state.position.x + 14, 22, state.position.z + 10);
 
     const clearance = state.position.y - CRATE_SIZE / 2 - groundHeight(state.position.x, state.position.z);
     grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1));

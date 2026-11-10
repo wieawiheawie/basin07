@@ -1,9 +1,9 @@
 import * as THREE from "three";
 
 /** Half-width of the playable ground. The mesh runs slightly past it so its edge hides under the rim. */
-export const HALF = 10;
-const MESH_HALF = 10.12;
-const SEGMENTS = 200;
+export const HALF = 16;
+const MESH_HALF = HALF + 0.12;
+const SEGMENTS = 320;
 
 function hash(ix: number, iz: number): number {
   let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0;

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { HALF } from "./terrain";
 import { createWoodTexture, scaleBoxUV } from "./wood";
 
 export interface StaticBox {
@@ -32,13 +33,15 @@ export function createTable(): Table {
     if (collide) boxes.push({ x, y, z, hx: width / 2, hy: height / 2, hz: depth / 2 });
   };
 
-  add(22, 0.4, 22, 0, -0.2, 0, true);          // top slab
-  add(22, 1.5, 0.5, 0, 0.75, -10.25, true);    // rim, back
-  add(22, 1.5, 0.5, 0, 0.75, 10.25, true);     // rim, front
-  add(0.5, 1.5, 20, -10.25, 0.75, 0, true);    // rim, left
-  add(0.5, 1.5, 20, 10.25, 0.75, 0, true);     // rim, right
+  const W = HALF * 2 + 2;
+  const R = HALF + 0.25;
+  add(W, 0.4, W, 0, -0.2, 0, true);               // top slab
+  add(W, 1.5, 0.5, 0, 0.75, -R, true);            // rim, back
+  add(W, 1.5, 0.5, 0, 0.75, R, true);             // rim, front
+  add(0.5, 1.5, HALF * 2, -R, 0.75, 0, true);     // rim, left
+  add(0.5, 1.5, HALF * 2, R, 0.75, 0, true);      // rim, right
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) add(0.9, 7, 0.9, sx * 9.5, -3.9, sz * 9.5, false); // legs
+    for (const sz of [-1, 1]) add(1.2, 9, 1.2, sx * (HALF - 0.5), -4.9, sz * (HALF - 0.5), false); // legs
   }
   return { group, boxes };
 }
