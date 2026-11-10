@@ -10,6 +10,7 @@ import { createTerrain, groundHeight, HALF } from "./terrain";
 
 const params = new URLSearchParams(location.search);
 const MAX_BLADES = 320000;
+const START_BLADES = 120000;
 const fixedBlades = params.has("blades");
 const LIFT = 0.8;
 const LIMIT = HALF - 0.75;
@@ -17,7 +18,7 @@ const LIMIT = HALF - 0.75;
 async function start(): Promise<void> {
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -41,7 +42,7 @@ async function start(): Promise<void> {
   const sun = new THREE.DirectionalLight("#fff0d6", 3.4);
   sun.position.copy(new THREE.Vector3(14, 22, 10));
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -11;
   sun.shadow.camera.right = 11;
   sun.shadow.camera.top = 11;
@@ -79,7 +80,7 @@ async function start(): Promise<void> {
   const grass = createGrass(MAX_BLADES);
   const crate = createCrate();
   scene.add(table.group, terrain.mesh, grass.mesh, crate);
-  if (fixedBlades) grass.setCount(Number(params.get("blades")));
+  grass.setCount(fixedBlades ? Number(params.get("blades")) : START_BLADES);
 
   const physics = await createPhysics(terrain, table.boxes);
   document.getElementById("loading")?.remove();
@@ -161,7 +162,7 @@ async function start(): Promise<void> {
   const clock = new THREE.Clock();
   let frames = 0;
   let accum = 0;
-  let adjustments = 0;
+  let slowSeen = false;
 
   renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
@@ -184,14 +185,18 @@ async function start(): Promise<void> {
 
     renderer.render(scene, camera);
 
-    // Keep it smooth on weak GPUs: trim blade count if the frame rate stays low.
-    if (!fixedBlades && adjustments < 8) {
+    // Adaptive quality: shed blades fast when slow, then drop resolution; grow back only if it was never slow.
+    if (!fixedBlades) {
       frames += 1;
       accum += dt;
-      if (frames === 90) {
-        if (accum / frames > 1 / 28 && grass.mesh.count > 40000) {
-          grass.setCount(grass.mesh.count * 0.75);
-          adjustments += 1;
+      if (frames === 30) {
+        const avg = accum / frames;
+        if (avg > 1 / 45) {
+          slowSeen = true;
+          if (grass.mesh.count > 25000) grass.setCount(grass.mesh.count * 0.65);
+          else if (renderer.getPixelRatio() > 0.7) renderer.setPixelRatio(0.7), resize();
+        } else if (!slowSeen && avg < 1 / 58 && grass.mesh.count < MAX_BLADES) {
+          grass.setCount(grass.mesh.count * 1.3);
         }
         frames = 0;
         accum = 0;

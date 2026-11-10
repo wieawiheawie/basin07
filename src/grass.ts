@@ -47,6 +47,7 @@ export function createGrass(max: number): Grass {
     uCrate: { value: new THREE.Matrix4() },
     uCrateInv: { value: new THREE.Matrix4() },
     uPush: { value: 0 },
+    uCenter: { value: new THREE.Vector3() },
     uSunView: { value: new THREE.Vector3(0, 1, 0) }
   };
 
@@ -55,6 +56,7 @@ export function createGrass(max: number): Grass {
     shader.uniforms.uCrate = uniforms.uCrate;
     shader.uniforms.uCrateInv = uniforms.uCrateInv;
     shader.uniforms.uPush = uniforms.uPush;
+    shader.uniforms.uCenter = uniforms.uCenter;
     shader.uniforms.uSunView = uniforms.uSunView;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
@@ -62,6 +64,7 @@ export function createGrass(max: number): Grass {
         uniform mat4 uCrate;
         uniform mat4 uCrateInv;
         uniform float uPush;
+        uniform vec3 uCenter;
         varying float vAO;
         varying float vTip;
         varying vec3 vRay;`)
@@ -75,8 +78,11 @@ export function createGrass(max: number): Grass {
         float bend = bladeT * bladeT * bladeH;
         gpos.x += gust * 0.20 * bend;
         gpos.z += gust * 0.09 * bend;
-        // Crate collision against the real oriented box (half-size 0.5), done in the crate's local space.
+        vAO = 1.0;
         vec4 rootW = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        vec3 toCrate = rootW.xyz - uCenter;
+        if (dot(toCrate, toCrate) < 6.0) {
+        // Crate collision against the real oriented box (half-size 0.5), done in the crate's local space.
         vec3 rl = (uCrateInv * rootW).xyz;
         vec3 qr = abs(rl) - vec3(0.5);
         float dRoot = length(max(qr, 0.0)) + min(max(qr.x, max(qr.y, qr.z)), 0.0);
@@ -117,6 +123,7 @@ export function createGrass(max: number): Grass {
         vec3 qg = abs(rlg) - vec3(0.5);
         float dg = length(max(qg, 0.0)) + min(max(qg.x, max(qg.y, qg.z)), 0.0);
         vAO = 1.0 - 0.55 * uPush * (1.0 - smoothstep(0.0, 0.7, dg));
+        }
         vTip = bladeT;
         vec4 mvPosition = modelViewMatrix * gpos;
         vRay = mvPosition.xyz;
@@ -194,6 +201,7 @@ export function createGrass(max: number): Grass {
     update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void {
       uniforms.uTime.value = time;
       uniforms.uSunView.value.copy(sunDirView);
+      uniforms.uCenter.value.setFromMatrixPosition(crate.matrixWorld);
       crate.updateMatrixWorld(true);
       uniforms.uCrate.value.copy(crate.matrixWorld);
       uniforms.uCrateInv.value.copy(crate.matrixWorld).invert();
