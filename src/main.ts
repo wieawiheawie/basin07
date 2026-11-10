@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./style.css";
 import { createCrate, CRATE_SIZE } from "./crate";
@@ -20,10 +21,10 @@ async function start(): Promise<void> {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMappingExposure = 0.9;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#1d2328");
+  scene.fog = new THREE.FogExp2("#b8c8d6", 0.003);
 
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
   camera.position.set(0, 27, 33);
@@ -38,7 +39,7 @@ async function start(): Promise<void> {
   controls.mouseButtons = { LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 
   const sun = new THREE.DirectionalLight("#fff0d6", 3.4);
-  sun.position.set(14, 22, 10);
+  sun.position.copy(new THREE.Vector3(14, 22, 10));
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.camera.left = -11;
@@ -50,7 +51,28 @@ async function start(): Promise<void> {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
-  scene.add(sun, sun.target, new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.85));
+  scene.add(sun, sun.target, new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.3));
+
+  // Procedural sky: visible backdrop plus an image-based environment so lighting matches the sky.
+  const sunDir = new THREE.Vector3(14, 22, 10).normalize();
+  const makeSky = (scale: number): Sky => {
+    const sky = new Sky();
+    sky.scale.setScalar(scale);
+    const u = sky.material.uniforms;
+    u.turbidity!.value = 2.5;
+    u.rayleigh!.value = 2.2;
+    u.mieCoefficient!.value = 0.004;
+    u.mieDirectionalG!.value = 0.8;
+    u.sunPosition!.value.copy(sunDir);
+    return sky;
+  };
+  const envScene = new THREE.Scene();
+  envScene.add(makeSky(50));
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+  scene.environmentIntensity = 0.55;
+  pmrem.dispose();
+  scene.add(makeSky(250));
 
   const table = createTable();
   const terrain = createTerrain();
@@ -134,6 +156,7 @@ async function start(): Promise<void> {
     grabbed: () => physics.isGrabbed()
   };
 
+  const sunView = new THREE.Vector3();
   const clock = new THREE.Clock();
   let frames = 0;
   let accum = 0;
@@ -152,9 +175,12 @@ async function start(): Promise<void> {
     sun.position.set(state.position.x + 14, 22, state.position.z + 10);
 
     const clearance = state.position.y - CRATE_SIZE / 2 - groundHeight(state.position.x, state.position.z);
-    grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1));
-
     controls.update();
+    camera.updateMatrixWorld();
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    sunView.copy(sunDir).transformDirection(camera.matrixWorldInverse);
+    grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1), sunView);
+
     renderer.render(scene, camera);
 
     // Keep it smooth on weak GPUs: trim blade count if the frame rate stays low.

@@ -10,6 +10,10 @@ const CRATE_MASS = 4;
 const MAX_GRAB_FORCE = 175;
 const GRAB_STIFFNESS = 760;
 const GRAB_DAMPING = 78;
+const LEVEL_STIFFNESS = 26;
+const LEVEL_DAMPING = 3;
+const UP = new THREE.Vector3(0, 1, 0);
+const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
 
 export interface CrateState {
   position: THREE.Vector3;
@@ -28,15 +32,20 @@ export interface Physics {
 }
 
 export async function createPhysics(
-  terrain: { positions: Float32Array; indices: Uint32Array },
+  terrain: { heightfield: { segments: number; extent: number; heights: Float32Array } },
   boxes: StaticBox[]
 ): Promise<Physics> {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
   world.timestep = STEP;
 
+  world.integrationParameters.normalizedAllowedLinearError = 0.0004;
+  world.integrationParameters.normalizedPredictionDistance = 0.004;
+  const hf = terrain.heightfield;
   world.createCollider(
-    RAPIER.ColliderDesc.trimesh(terrain.positions, terrain.indices).setFriction(0.9).setRestitution(0.05)
+    RAPIER.ColliderDesc.heightfield(hf.segments, hf.segments, hf.heights, { x: hf.extent, y: 1, z: hf.extent })
+      .setFriction(0.9)
+      .setRestitution(0.05)
   );
   for (const box of boxes) {
     world.createCollider(
@@ -73,6 +82,8 @@ export async function createPhysics(
   const scratchForce = new THREE.Vector3();
   const scratchVel = new THREE.Vector3();
   const scratchAng = new THREE.Vector3();
+  const scratchAxis = new THREE.Vector3();
+  const scratchTorque = new THREE.Vector3();
 
   function applyGrab(dt: number): void {
     const t = body.translation();
@@ -86,6 +97,21 @@ export async function createPhysics(
     const av = body.angvel();
     scratchAng.set(av.x, av.y, av.z);
     scratchVel.set(lv.x, lv.y, lv.z).add(scratchAng.cross(offset));
+
+    // Hold the crate roughly level: torque its nearest face toward world-up, like a hand steadying it.
+    let best = 0;
+    let bestDot = -2;
+    let bestAxis = scratchAxis;
+    for (const axis of AXES) {
+      scratchAxis.copy(axis).applyQuaternion(scratchQuat);
+      for (const sign of [1, -1]) {
+        const d = scratchAxis.y * sign;
+        if (d > bestDot) { bestDot = d; best = sign; bestAxis = scratchAxis.clone(); }
+      }
+    }
+    scratchTorque.copy(bestAxis).multiplyScalar(best).cross(UP).multiplyScalar(LEVEL_STIFFNESS);
+    scratchTorque.addScaledVector(scratchAng.set(av.x, av.y, av.z), -LEVEL_DAMPING).multiplyScalar(dt);
+    body.applyTorqueImpulse({ x: scratchTorque.x, y: scratchTorque.y, z: scratchTorque.z }, true);
 
     scratchForce.copy(target).sub(scratchPoint).multiplyScalar(GRAB_STIFFNESS).addScaledVector(scratchVel, -GRAB_DAMPING);
     if (scratchForce.length() > MAX_GRAB_FORCE) scratchForce.setLength(MAX_GRAB_FORCE);

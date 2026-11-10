@@ -59,12 +59,15 @@ export interface Terrain {
   mesh: THREE.Mesh;
   positions: Float32Array;
   indices: Uint32Array;
+  /** Physics heightfield: heights[ix * (segments + 1) + iz], spanning -extent/2..extent/2 on x and z. */
+  heightfield: { segments: number; extent: number; heights: Float32Array };
 }
 
 export function createTerrain(): Terrain {
   const side = SEGMENTS + 1;
   const positions = new Float32Array(side * side * 3);
   const colours = new Float32Array(side * side * 3);
+  const heights = new Float32Array(side * side);
   const soil = new THREE.Color("#4a3a26");
   const moss = new THREE.Color("#34562a");
   const dry = new THREE.Color("#5c5a34");
@@ -79,6 +82,7 @@ export function createTerrain(): Terrain {
       positions[i * 3] = x;
       positions[i * 3 + 1] = h;
       positions[i * 3 + 2] = z;
+      heights[ix * side + iz] = h;
 
       const patch = valueNoise(x * 0.9 + 3, z * 0.9 + 9);
       tint.copy(soil).lerp(moss, THREE.MathUtils.smoothstep(patch, 0.3, 0.6));
@@ -113,5 +117,5 @@ export function createTerrain(): Terrain {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.castShadow = false;
-  return { mesh, positions, indices };
+  return { mesh, positions, indices, heightfield: { segments: SEGMENTS, extent: MESH_HALF * 2, heights } };
 }

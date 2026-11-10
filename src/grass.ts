@@ -5,7 +5,7 @@ export interface Grass {
   mesh: THREE.InstancedMesh;
   max: number;
   setCount(count: number): void;
-  update(time: number, crate: THREE.Object3D, push: number): void;
+  update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void;
 }
 
 function bladeGeometry(): THREE.BufferGeometry {
@@ -46,7 +46,8 @@ export function createGrass(max: number): Grass {
     uTime: { value: 0 },
     uCrate: { value: new THREE.Matrix4() },
     uCrateInv: { value: new THREE.Matrix4() },
-    uPush: { value: 0 }
+    uPush: { value: 0 },
+    uSunView: { value: new THREE.Vector3(0, 1, 0) }
   };
 
   material.onBeforeCompile = (shader) => {
@@ -54,12 +55,16 @@ export function createGrass(max: number): Grass {
     shader.uniforms.uCrate = uniforms.uCrate;
     shader.uniforms.uCrateInv = uniforms.uCrateInv;
     shader.uniforms.uPush = uniforms.uPush;
+    shader.uniforms.uSunView = uniforms.uSunView;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
         uniform float uTime;
         uniform mat4 uCrate;
         uniform mat4 uCrateInv;
-        uniform float uPush;`)
+        uniform float uPush;
+        varying float vAO;
+        varying float vTip;
+        varying vec3 vRay;`)
       .replace("#include <project_vertex>", `
         float bladeT = clamp(position.y, 0.0, 1.0);
         float bladeH = length(instanceMatrix[1].xyz);
@@ -96,13 +101,28 @@ export function createGrass(max: number): Grass {
           else pl.y = sg.y * 0.53;
           gpos = uCrate * vec4(pl, 1.0);
         }
+        // Soft ambient occlusion in the crease where the crate meets the ground.
+        vec3 rlg = (uCrateInv * gpos).xyz;
+        vec3 qg = abs(rlg) - vec3(0.5);
+        float dg = length(max(qg, 0.0)) + min(max(qg.x, max(qg.y, qg.z)), 0.0);
+        vAO = 1.0 - 0.55 * uPush * (1.0 - smoothstep(0.0, 0.7, dg));
+        vTip = bladeT;
         vec4 mvPosition = modelViewMatrix * gpos;
+        vRay = mvPosition.xyz;
         gl_Position = projectionMatrix * mvPosition;`);
     // Keep the up-facing blade normal on both sides so the back of a blade isn't lit from below.
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <normal_fragment_begin>",
-      "#include <normal_fragment_begin>\n        normal = normalize(vNormal);"
-    );
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>
+        uniform vec3 uSunView;
+        varying float vAO;
+        varying float vTip;
+        varying vec3 vRay;`)
+      .replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n        normal = normalize(vNormal);")
+      .replace("#include <opaque_fragment>", `
+        // Subtle backlight: blades pick up a little warm light when the sun is behind them.
+        float back = pow(clamp(dot(normalize(vRay), normalize(uSunView)), 0.0, 1.0), 4.0);
+        outgoingLight = outgoingLight * vAO + diffuseColor.rgb * vec3(1.0, 0.95, 0.7) * back * vTip * 0.22;
+        #include <opaque_fragment>`);
   };
 
   const mesh = new THREE.InstancedMesh(bladeGeometry(), material, max);
@@ -160,8 +180,9 @@ export function createGrass(max: number): Grass {
     setCount(count: number): void {
       mesh.count = Math.max(0, Math.min(max, Math.floor(count)));
     },
-    update(time: number, crate: THREE.Object3D, push: number): void {
+    update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void {
       uniforms.uTime.value = time;
+      uniforms.uSunView.value.copy(sunDirView);
       crate.updateMatrixWorld(true);
       uniforms.uCrate.value.copy(crate.matrixWorld);
       uniforms.uCrateInv.value.copy(crate.matrixWorld).invert();
