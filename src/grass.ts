@@ -80,10 +80,21 @@ export function createGrass(max: number): Grass {
         vec3 rl = (uCrateInv * rootW).xyz;
         vec3 qr = abs(rl) - vec3(0.5);
         float dRoot = length(max(qr, 0.0)) + min(max(qr.x, max(qr.y, qr.z)), 0.0);
-        // Blades rooted under the crate are squashed flat beneath it.
-        float footprint = step(abs(rl.x), 0.5) * step(abs(rl.z), 0.5) * step(-0.35, rl.y) * step(rl.y, 0.5);
-        float collapse = footprint * (1.0 - smoothstep(0.05, 0.16, dRoot));
-        gpos.xyz = mix(gpos.xyz, rootW.xyz, collapse);
+        // Grass under the crate is pressed down: cast a ray straight up from the root; if it hits the box,
+        // cap the blade below the box underside and squash it inward.
+        vec3 du = mat3(uCrateInv) * vec3(0.0, 1.0, 0.0) + vec3(1e-5);
+        vec3 invd = 1.0 / du;
+        vec3 t1 = (vec3(-0.5) - rl) * invd;
+        vec3 t2 = (vec3(0.5) - rl) * invd;
+        vec3 tmn = min(t1, t2);
+        vec3 tmx = max(t1, t2);
+        float tNear = max(max(tmn.x, tmn.y), tmn.z);
+        float tFar = min(min(tmx.x, tmx.y), tmx.z);
+        float hitU = step(max(tNear, 0.0), tFar);
+        float gap = max(tNear, 0.0);
+        gpos.y = mix(gpos.y, min(gpos.y, rootW.y + max(gap - 0.03, 0.0)), hitU);
+        gpos.xz = mix(gpos.xz, rootW.xz, hitU * (1.0 - smoothstep(0.0, 0.25, gap)) * 0.9);
+        float collapse = hitU;
         // Blades beside it lean away from the nearest face, in the box's own orientation.
         vec3 nl = rl - clamp(rl, vec3(-0.5), vec3(0.5));
         vec3 wdir = mat3(uCrate) * (nl / max(length(nl), 0.0001));

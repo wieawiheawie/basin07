@@ -153,7 +153,8 @@ async function start(): Promise<void> {
     crate: () => { const c = physics.crate(); return { p: c.position.toArray(), v: c.velocity.toArray() }; },
     screen: project,
     blades: () => grass.mesh.count,
-    grabbed: () => physics.isGrabbed()
+    grabbed: () => physics.isGrabbed(),
+    cam: (p: number[], t: number[]) => { camera.position.set(p[0]!, p[1]!, p[2]!); controls.target.set(t[0]!, t[1]!, t[2]!); }
   };
 
   const sunView = new THREE.Vector3();
