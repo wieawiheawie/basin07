@@ -1,20 +1,11 @@
 import * as THREE from "three";
 import { HALF, groundHeight, valueNoise } from "./terrain";
 
-export interface CubeInfluence {
-  x: number;
-  y: number;
-  z: number;
-  radius: number;
-  /** 0 when the crate is lifted clear of the grass, 1 when it rests on it. */
-  push: number;
-}
-
 export interface Grass {
   mesh: THREE.InstancedMesh;
   max: number;
   setCount(count: number): void;
-  update(time: number, cube: CubeInfluence): void;
+  update(time: number, crate: THREE.Object3D, push: number): void;
 }
 
 function bladeGeometry(): THREE.BufferGeometry {
@@ -53,18 +44,21 @@ export function createGrass(max: number): Grass {
 
   const uniforms = {
     uTime: { value: 0 },
-    uCube: { value: new THREE.Vector4(0, 0, 0, 1) },
+    uCrate: { value: new THREE.Matrix4() },
+    uCrateInv: { value: new THREE.Matrix4() },
     uPush: { value: 0 }
   };
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uniforms.uTime;
-    shader.uniforms.uCube = uniforms.uCube;
+    shader.uniforms.uCrate = uniforms.uCrate;
+    shader.uniforms.uCrateInv = uniforms.uCrateInv;
     shader.uniforms.uPush = uniforms.uPush;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
         uniform float uTime;
-        uniform vec4 uCube;
+        uniform mat4 uCrate;
+        uniform mat4 uCrateInv;
         uniform float uPush;`)
       .replace("#include <project_vertex>", `
         float bladeT = clamp(position.y, 0.0, 1.0);
@@ -76,11 +70,32 @@ export function createGrass(max: number): Grass {
         float bend = bladeT * bladeT * bladeH;
         gpos.x += gust * 0.20 * bend;
         gpos.z += gust * 0.09 * bend;
-        vec2 away = gpos.xz - uCube.xz;
-        float dist = length(away);
-        float press = uPush * (1.0 - smoothstep(uCube.w * 0.75, uCube.w * 1.4, dist));
-        gpos.xz += (away / max(dist, 0.001)) * press * bladeT * bladeH * 0.9;
-        gpos.y -= press * bladeT * bladeH * 0.55;
+        // Crate collision against the real oriented box (half-size 0.5), done in the crate's local space.
+        vec4 rootW = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        vec3 rl = (uCrateInv * rootW).xyz;
+        vec3 qr = abs(rl) - vec3(0.5);
+        float dRoot = length(max(qr, 0.0)) + min(max(qr.x, max(qr.y, qr.z)), 0.0);
+        // Blades rooted under the crate are squashed flat beneath it.
+        float footprint = step(abs(rl.x), 0.5) * step(abs(rl.z), 0.5) * step(-0.35, rl.y) * step(rl.y, 0.5);
+        float collapse = footprint * (1.0 - smoothstep(0.05, 0.16, dRoot));
+        gpos.xyz = mix(gpos.xyz, rootW.xyz, collapse);
+        // Blades beside it lean away from the nearest face, in the box's own orientation.
+        vec3 nl = rl - clamp(rl, vec3(-0.5), vec3(0.5));
+        vec3 wdir = mat3(uCrate) * (nl / max(length(nl), 0.0001));
+        float lean = uPush * (1.0 - smoothstep(0.02, 0.5, dRoot)) * (1.0 - collapse);
+        vec2 leanDir = normalize(wdir.xz + vec2(0.0001));
+        gpos.xz += leanDir * lean * bladeT * bladeH * 0.9;
+        gpos.y -= lean * bladeT * bladeT * bladeH * 0.5;
+        // Final safety: any vertex still inside the (slightly grown) box is pushed out through the nearest face.
+        vec3 pl = (uCrateInv * gpos).xyz;
+        vec3 q = abs(pl) - vec3(0.53);
+        if (max(q.x, max(q.y, q.z)) < 0.0) {
+          vec3 sg = sign(pl);
+          if (q.x > q.y && q.x > q.z) pl.x = sg.x * 0.53;
+          else if (q.z > q.y) pl.z = sg.z * 0.53;
+          else pl.y = sg.y * 0.53;
+          gpos = uCrate * vec4(pl, 1.0);
+        }
         vec4 mvPosition = modelViewMatrix * gpos;
         gl_Position = projectionMatrix * mvPosition;`);
     // Keep the up-facing blade normal on both sides so the back of a blade isn't lit from below.
@@ -136,10 +151,12 @@ export function createGrass(max: number): Grass {
     setCount(count: number): void {
       mesh.count = Math.max(0, Math.min(max, Math.floor(count)));
     },
-    update(time: number, cube: CubeInfluence): void {
+    update(time: number, crate: THREE.Object3D, push: number): void {
       uniforms.uTime.value = time;
-      uniforms.uCube.value.set(cube.x, cube.y, cube.z, cube.radius);
-      uniforms.uPush.value = cube.push;
+      crate.updateMatrixWorld(true);
+      uniforms.uCrate.value.copy(crate.matrixWorld);
+      uniforms.uCrateInv.value.copy(crate.matrixWorld).invert();
+      uniforms.uPush.value = push;
     }
   };
 }

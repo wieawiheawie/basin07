@@ -148,11 +148,7 @@ async function start(): Promise<void> {
     crate.quaternion.copy(state.quaternion);
 
     const clearance = state.position.y - CRATE_SIZE / 2 - groundHeight(state.position.x, state.position.z);
-    grass.update(clock.elapsedTime, {
-      x: state.position.x, y: state.position.y, z: state.position.z,
-      radius: CRATE_SIZE * 0.75,
-      push: THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1)
-    });
+    grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1));
 
     controls.update();
     renderer.render(scene, camera);
