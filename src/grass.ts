@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { HALF, groundHeight, valueNoise } from "./terrain";
+import { HALF, groundHeight, lushness, valueNoise } from "./terrain";
 
 export interface Grass {
   mesh: THREE.InstancedMesh;
@@ -17,9 +17,9 @@ function bladeGeometry(): THREE.BufferGeometry {
     0.33, 0.55, 0.07,
     0, 1, 0.32
   ]);
-  const base = new THREE.Color("#173d12");
-  const mid = new THREE.Color("#3f8426");
-  const tip = new THREE.Color("#9ccb4a");
+  const base = new THREE.Color("#0f2a0d");
+  const mid = new THREE.Color("#2c5a1b");
+  const tip = new THREE.Color("#6c9633");
   const colours = new Float32Array([
     ...base.toArray(), ...base.toArray(),
     ...mid.toArray(), ...mid.toArray(),
@@ -119,12 +119,18 @@ export function createGrass(max: number): Grass {
     return seed / 4294967296;
   };
 
-  for (let i = 0; i < max; i += 1) {
+  let placed = 0;
+  while (placed < max) {
     const x = (random() * 2 - 1) * (HALF - 0.06);
     const z = (random() * 2 - 1) * (HALF - 0.06);
-    const lush = 0.6 + 0.4 * valueNoise(x * 0.5 + 20, z * 0.5 + 4);
+    const damp = lushness(x, z);
+    // Denser grass in hollows, sparser on dry hilltops.
+    if (random() > 0.4 + 0.6 * damp) continue;
+    const i = placed;
+    placed += 1;
+    const lush = (0.55 + 0.45 * valueNoise(x * 0.5 + 20, z * 0.5 + 4)) * (0.8 + 0.45 * damp);
     const height = (0.24 + random() * 0.34) * lush;
-    const width = 0.04 + random() * 0.035;
+    const width = 0.05 + random() * 0.04;
     dummy.position.set(x, groundHeight(x, z) - 0.015, z);
     euler.set((random() - 0.5) * 0.35, random() * Math.PI * 2, 0);
     dummy.quaternion.setFromEuler(euler);
@@ -132,12 +138,15 @@ export function createGrass(max: number): Grass {
     dummy.updateMatrix();
     mesh.setMatrixAt(i, dummy.matrix);
 
-    const dryness = THREE.MathUtils.smoothstep(valueNoise(x * 0.35 + 5, z * 0.35 + 1), 0.6, 0.85);
-    const brightness = 0.8 + random() * 0.45;
+    const dryness = Math.max(
+      THREE.MathUtils.smoothstep(valueNoise(x * 0.35 + 5, z * 0.35 + 1), 0.6, 0.85),
+      (1 - damp) * 0.5
+    );
+    const brightness = (0.6 + random() * 0.35) * (1 - damp * 0.15);
     tint.setRGB(
-      brightness * (1 + 0.35 * dryness),
+      brightness * (1 + 0.45 * dryness),
       brightness * (1 + 0.05 * dryness),
-      brightness * (1 - 0.45 * dryness)
+      brightness * (1 - 0.5 * dryness)
     );
     mesh.setColorAt(i, tint);
   }

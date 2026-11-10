@@ -32,13 +32,13 @@ export function createTable(): Table {
     if (collide) boxes.push({ x, y, z, hx: width / 2, hy: height / 2, hz: depth / 2 });
   };
 
-  add(11, 0.4, 11, 0, -0.2, 0, true);          // top slab
-  add(11, 0.7, 0.5, 0, 0.35, -5.25, true);     // rim, back
-  add(11, 0.7, 0.5, 0, 0.35, 5.25, true);      // rim, front
-  add(0.5, 0.7, 10, -5.25, 0.35, 0, true);     // rim, left
-  add(0.5, 0.7, 10, 5.25, 0.35, 0, true);      // rim, right
+  add(22, 0.4, 22, 0, -0.2, 0, true);          // top slab
+  add(22, 1.5, 0.5, 0, 0.75, -10.25, true);    // rim, back
+  add(22, 1.5, 0.5, 0, 0.75, 10.25, true);     // rim, front
+  add(0.5, 1.5, 20, -10.25, 0.75, 0, true);    // rim, left
+  add(0.5, 1.5, 20, 10.25, 0.75, 0, true);     // rim, right
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) add(0.55, 4, 0.55, sx * 4.8, -2.4, sz * 4.8, false); // legs
+    for (const sz of [-1, 1]) add(0.9, 7, 0.9, sx * 9.5, -3.9, sz * 9.5, false); // legs
   }
   return { group, boxes };
 }

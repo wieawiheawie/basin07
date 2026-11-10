@@ -8,10 +8,10 @@ import { createTable } from "./table";
 import { createTerrain, groundHeight } from "./terrain";
 
 const params = new URLSearchParams(location.search);
-const MAX_BLADES = 70000;
+const MAX_BLADES = 220000;
 const fixedBlades = params.has("blades");
 const LIFT = 0.8;
-const LIMIT = 4.25;
+const LIMIT = 9.25;
 
 async function start(): Promise<void> {
   const canvas = document.getElementById("view") as HTMLCanvasElement;
@@ -20,33 +20,33 @@ async function start(): Promise<void> {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#1d2328");
 
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
-  camera.position.set(0, 9.5, 11.5);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 160);
+  camera.position.set(0, 17, 21);
 
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.3, 0);
   controls.enableDamping = true;
   controls.enablePan = false;
   controls.minDistance = 3;
-  controls.maxDistance = 24;
+  controls.maxDistance = 55;
   controls.maxPolarAngle = 1.5;
   controls.mouseButtons = { LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 
   const sun = new THREE.DirectionalLight("#fff0d6", 3.4);
-  sun.position.set(7, 11, 5);
+  sun.position.set(14, 22, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -8;
-  sun.shadow.camera.right = 8;
-  sun.shadow.camera.top = 8;
-  sun.shadow.camera.bottom = -8;
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.camera.left = -16;
+  sun.shadow.camera.right = 16;
+  sun.shadow.camera.top = 16;
+  sun.shadow.camera.bottom = -16;
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 40;
+  sun.shadow.camera.far = 80;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
@@ -158,7 +158,7 @@ async function start(): Promise<void> {
       frames += 1;
       accum += dt;
       if (frames === 90) {
-        if (accum / frames > 1 / 28 && grass.mesh.count > 20000) {
+        if (accum / frames > 1 / 28 && grass.mesh.count > 40000) {
           grass.setCount(grass.mesh.count * 0.75);
           adjustments += 1;
         }

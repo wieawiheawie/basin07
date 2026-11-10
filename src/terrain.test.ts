@@ -3,11 +3,11 @@ import { createTerrain, groundHeight, HALF } from "./terrain";
 
 describe("terrain", () => {
   it("stays above the tabletop and below the rim", () => {
-    for (let x = -HALF; x <= HALF; x += 0.25) {
-      for (let z = -HALF; z <= HALF; z += 0.25) {
+    for (let x = -HALF; x <= HALF; x += 0.5) {
+      for (let z = -HALF; z <= HALF; z += 0.5) {
         const h = groundHeight(x, z);
         expect(h).toBeGreaterThan(0.05);
-        expect(h).toBeLessThan(0.6);
+        expect(h).toBeLessThan(1.3);
       }
     }
   });

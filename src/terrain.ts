@@ -1,9 +1,9 @@
 import * as THREE from "three";
 
 /** Half-width of the playable ground. The mesh runs slightly past it so its edge hides under the rim. */
-export const HALF = 5;
-const MESH_HALF = 5.12;
-const SEGMENTS = 96;
+export const HALF = 10;
+const MESH_HALF = 10.12;
+const SEGMENTS = 200;
 
 function hash(ix: number, iz: number): number {
   let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0;
@@ -39,11 +39,20 @@ function fbm(x: number, z: number, octaves: number): number {
   return sum;
 }
 
-/** Ground surface height above the tabletop at (x, z). Always between about 0.08 and 0.46. */
+/** Ground surface height above the tabletop at (x, z): broad hills, small rolls and deeper hollows. Between about 0.1 and 1.2. */
 export function groundHeight(x: number, z: number): number {
-  const rolling = (fbm(x * 0.3 + 11, z * 0.3 + 7, 3) - 0.4375) * 0.5;
-  const detail = (valueNoise(x * 2.1, z * 2.1) - 0.5) * 0.06;
-  return 0.27 + rolling * 1.1 + detail;
+  const hills = (fbm(x * 0.075 + 11, z * 0.075 + 7, 4) - 0.47) * 2.6;
+  const rolling = (fbm(x * 0.28 + 3, z * 0.28 + 19, 3) - 0.44) * 0.5;
+  const detail = (valueNoise(x * 2.1, z * 2.1) - 0.5) * 0.05;
+  const raw = 0.42 + hills + rolling + detail;
+  // Soft floor so hollows flatten out instead of hitting the tabletop.
+  const h = raw < 0.3 ? 0.1 + 0.2 * THREE.MathUtils.smoothstep(raw, -0.5, 0.3) : raw;
+  return Math.min(h, 1.2);
+}
+
+/** 0 on dry high ground, 1 in damp hollows. Drives grass density, height and colour. */
+export function lushness(x: number, z: number): number {
+  return 1 - THREE.MathUtils.smoothstep(groundHeight(x, z), 0.22, 0.75);
 }
 
 export interface Terrain {
@@ -57,8 +66,8 @@ export function createTerrain(): Terrain {
   const positions = new Float32Array(side * side * 3);
   const colours = new Float32Array(side * side * 3);
   const soil = new THREE.Color("#4a3a26");
-  const moss = new THREE.Color("#3f6a2b");
-  const dry = new THREE.Color("#6b6a3a");
+  const moss = new THREE.Color("#34562a");
+  const dry = new THREE.Color("#5c5a34");
   const tint = new THREE.Color();
 
   for (let iz = 0; iz < side; iz += 1) {
@@ -74,7 +83,7 @@ export function createTerrain(): Terrain {
       const patch = valueNoise(x * 0.9 + 3, z * 0.9 + 9);
       tint.copy(soil).lerp(moss, THREE.MathUtils.smoothstep(patch, 0.3, 0.6));
       tint.lerp(dry, THREE.MathUtils.smoothstep(valueNoise(x * 0.4, z * 0.4), 0.62, 0.9) * 0.6);
-      tint.multiplyScalar(0.75 + h * 0.6);
+      tint.multiplyScalar(0.6 + h * 0.45 - lushness(x, z) * 0.12);
       colours[i * 3] = tint.r;
       colours[i * 3 + 1] = tint.g;
       colours[i * 3 + 2] = tint.b;
