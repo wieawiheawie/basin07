@@ -3,7 +3,6 @@ import { HALF, groundHeight, lushness, valueNoise } from "./terrain";
 
 export interface Grass {
   mesh: THREE.InstancedMesh;
-  max: number;
   setCount(count: number): void;
   update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void;
 }
@@ -194,7 +193,6 @@ export function createGrass(max: number): Grass {
 
   return {
     mesh,
-    max,
     setCount(count: number): void {
       mesh.count = Math.max(0, Math.min(max, Math.floor(count)));
     },

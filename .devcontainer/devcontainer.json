@@ -6,20 +6,14 @@
       "version": "24"
     }
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh && npm install --no-audit --no-fund",
-  "forwardPorts": [5173],
+  "postCreateCommand": "npm install --no-audit --no-fund",
+  "forwardPorts": [
+    5173
+  ],
   "portsAttributes": {
     "5173": {
       "label": "Deskbound",
       "onAutoForward": "openPreview"
-    }
-  },
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "rust-lang.rust-analyzer",
-        "ms-vscode.vscode-typescript-next"
-      ]
     }
   }
 }

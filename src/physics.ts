@@ -28,7 +28,6 @@ export interface Physics {
   setGrabTarget(target: THREE.Vector3): void;
   endGrab(): void;
   isGrabbed(): boolean;
-  reset(): void;
 }
 
 export async function createPhysics(
@@ -158,7 +157,6 @@ export async function createPhysics(
       const speed = Math.hypot(v.x, v.y, v.z);
       if (speed > 12) body.setLinvel({ x: (v.x / speed) * 12, y: (v.y / speed) * 12, z: (v.z / speed) * 12 }, true);
     },
-    isGrabbed: () => grabbed,
-    reset: spawn
+    isGrabbed: () => grabbed
   };
 }
