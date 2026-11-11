@@ -51,8 +51,12 @@ export function groundHeight(x: number, z: number): number {
 }
 
 /** 0 on dry high ground, 1 in damp hollows. Drives grass density, height and colour. */
+export function lushnessFromHeight(h: number): number {
+  return 1 - THREE.MathUtils.smoothstep(h, 0.22, 0.75);
+}
+
 export function lushness(x: number, z: number): number {
-  return 1 - THREE.MathUtils.smoothstep(groundHeight(x, z), 0.22, 0.75);
+  return lushnessFromHeight(groundHeight(x, z));
 }
 
 export interface Terrain {

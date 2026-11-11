@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createAtmosphere } from "./atmosphere";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { createCameraRig } from "./camera";
 import "./style.css";
 import { createCrate, CRATE_SIZE } from "./crate";
 import { createGrass } from "./grass";
@@ -9,8 +9,8 @@ import { createTable } from "./table";
 import { createTerrain, groundHeight, HALF } from "./terrain";
 
 const params = new URLSearchParams(location.search);
-const MAX_BLADES = 320000;
-const START_BLADES = 120000;
+const MAX_BLADES = 440000;
+const START_QUALITY = 0.7;
 const fixedBlades = params.has("blades");
 const LIFT = 0.8;
 const LIMIT = HALF - 0.75;
@@ -28,14 +28,8 @@ async function start(): Promise<void> {
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 800);
   camera.position.set(0, 27, 33);
 
-  const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0.3, 0);
-  controls.enableDamping = true;
-  controls.enablePan = false;
-  controls.minDistance = 3;
-  controls.maxDistance = 90;
-  controls.maxPolarAngle = 1.5;
-  controls.mouseButtons = { LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  const rig = createCameraRig(camera, canvas, HALF - 1);
+  const controls = rig.controls;
 
   const sun = new THREE.DirectionalLight("#fff0d6", 3.4);
   sun.position.copy(new THREE.Vector3(14, 22, 10));
@@ -62,8 +56,8 @@ async function start(): Promise<void> {
   const terrain = createTerrain();
   const grass = createGrass(MAX_BLADES);
   const crate = createCrate();
-  scene.add(table.group, terrain.mesh, grass.mesh, crate);
-  grass.setCount(fixedBlades ? Number(params.get("blades")) : START_BLADES);
+  scene.add(table.group, terrain.mesh, grass.group, crate);
+  grass.setQuality(fixedBlades ? Number(params.get("blades")) / MAX_BLADES : START_QUALITY);
 
   const physics = await createPhysics(terrain, table.boxes);
   document.getElementById("loading")?.remove();
@@ -103,12 +97,14 @@ async function start(): Promise<void> {
     const hits = raycaster.intersectObject(crate, true);
     const first = hits[0];
     if (!first) return;
+    // Grabbing the crate takes priority over orbiting the camera.
+    event.stopImmediatePropagation();
     canvas.setPointerCapture(event.pointerId);
     plane.constant = -(first.point.y + LIFT);
     physics.beginGrab(crate.worldToLocal(first.point.clone()));
     updateTarget();
     canvas.style.cursor = "grabbing";
-  });
+  }, { capture: true });
 
   canvas.addEventListener("pointermove", (event) => {
     aim(event);
@@ -136,7 +132,8 @@ async function start(): Promise<void> {
   (window as unknown as Record<string, unknown>).__deskbound = {
     crate: () => { const c = physics.crate(); return { p: c.position.toArray(), v: c.velocity.toArray() }; },
     screen: project,
-    blades: () => grass.mesh.count,
+    blades: () => grass.drawn(),
+    view: () => ({ p: camera.position.toArray(), t: controls.target.toArray() }),
     grabbed: () => physics.isGrabbed(),
     cam: (p: number[], t: number[]) => { camera.position.set(p[0]!, p[1]!, p[2]!); controls.target.set(t[0]!, t[1]!, t[2]!); }
   };
@@ -161,11 +158,11 @@ async function start(): Promise<void> {
 
     const clearance = state.position.y - CRATE_SIZE / 2 - groundHeight(state.position.x, state.position.z);
     atmosphere.update(dt, clock.elapsedTime);
-    controls.update();
+    rig.update(dt);
     camera.updateMatrixWorld();
     camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     sunView.copy(sunDir).transformDirection(camera.matrixWorldInverse);
-    grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1), sunView);
+    grass.update(clock.elapsedTime, crate, THREE.MathUtils.clamp(1 - clearance / 0.45, 0, 1), sunView, camera.position);
 
     renderer.render(scene, camera);
 
@@ -177,10 +174,10 @@ async function start(): Promise<void> {
         const avg = accum / frames;
         if (avg > 1 / 45) {
           slowSeen = true;
-          if (grass.mesh.count > 25000) grass.setCount(grass.mesh.count * 0.65);
+          if (grass.quality() > 0.2) grass.setQuality(grass.quality() * 0.7);
           else if (renderer.getPixelRatio() > 0.7) renderer.setPixelRatio(0.7), resize();
-        } else if (!slowSeen && avg < 1 / 58 && grass.mesh.count < MAX_BLADES) {
-          grass.setCount(grass.mesh.count * 1.3);
+        } else if (!slowSeen && avg < 1 / 58 && grass.quality() < 1) {
+          grass.setQuality(grass.quality() * 1.2);
         }
         frames = 0;
         accum = 0;

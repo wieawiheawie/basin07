@@ -1,11 +1,19 @@
 import * as THREE from "three";
-import { HALF, groundHeight, lushness, valueNoise } from "./terrain";
+import { HALF, groundHeight, lushnessFromHeight, valueNoise } from "./terrain";
 
 export interface Grass {
-  mesh: THREE.InstancedMesh;
-  setCount(count: number): void;
-  update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void;
+  group: THREE.Group;
+  /** 0..1 share of the full blade budget. Blades are also thinned with distance from the camera. */
+  setQuality(quality: number): void;
+  quality(): number;
+  /** Blades drawn last frame. */
+  drawn(): number;
+  update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3, cameraPosition: THREE.Vector3): void;
 }
+
+const CHUNKS = 8;
+/** Density (share of the full budget) that blades keep their natural width at. Thinner areas get slightly wider blades. */
+const REFERENCE_DENSITY = 0.7;
 
 function bladeGeometry(): THREE.BufferGeometry {
   // Unit-height blade: wide base, narrowing mid section, curved tip. Scaled per instance.
@@ -34,6 +42,7 @@ function bladeGeometry(): THREE.BufferGeometry {
 }
 
 export function createGrass(max: number): Grass {
+  const perChunk = Math.floor(max / (CHUNKS * CHUNKS));
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.9,
@@ -47,7 +56,8 @@ export function createGrass(max: number): Grass {
     uCrateInv: { value: new THREE.Matrix4() },
     uPush: { value: 0 },
     uCenter: { value: new THREE.Vector3() },
-    uSunView: { value: new THREE.Vector3(0, 1, 0) }
+    uSunView: { value: new THREE.Vector3(0, 1, 0) },
+    uLod: { value: 1 }
   };
 
   material.onBeforeCompile = (shader) => {
@@ -57,6 +67,7 @@ export function createGrass(max: number): Grass {
     shader.uniforms.uPush = uniforms.uPush;
     shader.uniforms.uCenter = uniforms.uCenter;
     shader.uniforms.uSunView = uniforms.uSunView;
+    shader.uniforms.uLod = uniforms.uLod;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
         uniform float uTime;
@@ -64,13 +75,16 @@ export function createGrass(max: number): Grass {
         uniform mat4 uCrateInv;
         uniform float uPush;
         uniform vec3 uCenter;
+        uniform float uLod;
         varying float vAO;
         varying float vTip;
         varying vec3 vRay;`)
       .replace("#include <project_vertex>", `
         float bladeT = clamp(position.y, 0.0, 1.0);
         float bladeH = length(instanceMatrix[1].xyz);
-        vec4 gpos = instanceMatrix * vec4(transformed, 1.0);
+        vec3 blade = transformed;
+        blade.x *= uLod;
+        vec4 gpos = instanceMatrix * vec4(blade, 1.0);
         float w1 = sin(uTime * 1.7 + gpos.x * 0.75 + gpos.z * 0.55);
         float w2 = sin(uTime * 2.9 + gpos.x * 1.9 - gpos.z * 1.3) * 0.4;
         float gust = (w1 + w2) * 0.5 + 0.15;
@@ -142,11 +156,9 @@ export function createGrass(max: number): Grass {
         #include <opaque_fragment>`);
   };
 
-  const mesh = new THREE.InstancedMesh(bladeGeometry(), material, max);
-  mesh.receiveShadow = true;
-  mesh.castShadow = false;
-  mesh.frustumCulled = false;
-
+  const geometry = bladeGeometry();
+  const group = new THREE.Group();
+  const chunkSize = (HALF * 2) / CHUNKS;
   const dummy = new THREE.Object3D();
   const euler = new THREE.Euler(0, 0, 0, "YXZ");
   const tint = new THREE.Color();
@@ -156,54 +168,90 @@ export function createGrass(max: number): Grass {
     return seed / 4294967296;
   };
 
-  let placed = 0;
-  while (placed < max) {
-    const x = (random() * 2 - 1) * (HALF - 0.06);
-    const z = (random() * 2 - 1) * (HALF - 0.06);
-    const damp = lushness(x, z);
-    // Denser grass in hollows, sparser on dry hilltops.
-    if (random() > 0.4 + 0.6 * damp) continue;
-    const i = placed;
-    placed += 1;
-    const lush = (0.55 + 0.45 * valueNoise(x * 0.5 + 20, z * 0.5 + 4)) * (0.8 + 0.45 * damp);
-    const height = (0.24 + random() * 0.34) * lush;
-    const width = 0.05 + random() * 0.04;
-    dummy.position.set(x, groundHeight(x, z) - 0.015, z);
-    euler.set((random() - 0.5) * 0.35, random() * Math.PI * 2, 0);
-    dummy.quaternion.setFromEuler(euler);
-    dummy.scale.set(width, height, height);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
+  interface Chunk { mesh: THREE.InstancedMesh; centre: THREE.Vector3 }
+  const chunks: Chunk[] = [];
+  for (let cx = 0; cx < CHUNKS; cx += 1) {
+    for (let cz = 0; cz < CHUNKS; cz += 1) {
+      const x0 = -HALF + cx * chunkSize;
+      const z0 = -HALF + cz * chunkSize;
+      const mesh = new THREE.InstancedMesh(geometry, material, perChunk);
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      let placed = 0;
+      while (placed < perChunk) {
+        const x = Math.min(HALF - 0.06, Math.max(-HALF + 0.06, x0 + random() * chunkSize));
+        const z = Math.min(HALF - 0.06, Math.max(-HALF + 0.06, z0 + random() * chunkSize));
+        const h = groundHeight(x, z);
+        const damp = lushnessFromHeight(h);
+        // Denser grass in hollows, sparser on dry hilltops.
+        if (random() > 0.4 + 0.6 * damp) continue;
+        const i = placed;
+        placed += 1;
+        const lush = (0.55 + 0.45 * valueNoise(x * 0.5 + 20, z * 0.5 + 4)) * (0.8 + 0.45 * damp);
+        const height = (0.24 + random() * 0.34) * lush;
+        const width = 0.05 + random() * 0.04;
+        dummy.position.set(x, h - 0.015, z);
+        euler.set((random() - 0.5) * 0.35, random() * Math.PI * 2, 0);
+        dummy.quaternion.setFromEuler(euler);
+        dummy.scale.set(width, height, height);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
 
-    const dryness = Math.max(
-      THREE.MathUtils.smoothstep(valueNoise(x * 0.35 + 5, z * 0.35 + 1), 0.6, 0.85),
-      (1 - damp) * 0.5
-    );
-    const brightness = (0.6 + random() * 0.35) * (1 - damp * 0.15);
-    tint.setRGB(
-      brightness * (1 + 0.45 * dryness),
-      brightness * (1 + 0.05 * dryness),
-      brightness * (1 - 0.5 * dryness)
-    );
-    mesh.setColorAt(i, tint);
+        const dryness = Math.max(
+          THREE.MathUtils.smoothstep(valueNoise(x * 0.35 + 5, z * 0.35 + 1), 0.6, 0.85),
+          (1 - damp) * 0.5
+        );
+        const brightness = (0.6 + random() * 0.35) * (1 - damp * 0.15);
+        tint.setRGB(
+          brightness * (1 + 0.45 * dryness),
+          brightness * (1 + 0.05 * dryness),
+          brightness * (1 - 0.5 * dryness)
+        );
+        mesh.setColorAt(i, tint);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      const centre = new THREE.Vector3(x0 + chunkSize / 2, 0.6, z0 + chunkSize / 2);
+      // Tight bounds so off-screen chunks are skipped entirely.
+      mesh.boundingSphere = new THREE.Sphere(centre.clone(), chunkSize * 0.71 + 1.8);
+      mesh.onBeforeRender = () => {
+        uniforms.uLod.value = mesh.userData.lod as number;
+      };
+      mesh.userData.lod = 1;
+      group.add(mesh);
+      chunks.push({ mesh, centre });
+    }
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+  let quality = 1;
+  let drawn = 0;
 
   return {
-    mesh,
-    setCount(count: number): void {
-      mesh.count = Math.max(0, Math.min(max, Math.floor(count)));
+    group,
+    setQuality(value: number): void {
+      quality = THREE.MathUtils.clamp(value, 0.05, 1);
     },
-    update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3): void {
+    quality: () => quality,
+    drawn: () => drawn,
+    update(time: number, crate: THREE.Object3D, push: number, sunDirView: THREE.Vector3, cameraPosition: THREE.Vector3): void {
       uniforms.uTime.value = time;
       uniforms.uSunView.value.copy(sunDirView);
-      uniforms.uCenter.value.setFromMatrixPosition(crate.matrixWorld);
       crate.updateMatrixWorld(true);
+      uniforms.uCenter.value.setFromMatrixPosition(crate.matrixWorld);
       uniforms.uCrate.value.copy(crate.matrixWorld);
       uniforms.uCrateInv.value.copy(crate.matrixWorld).invert();
       uniforms.uPush.value = push;
+      // Thin out distant chunks: far blades are sub-pixel, so keep full density only close to the camera.
+      drawn = 0;
+      for (const chunk of chunks) {
+        const distance = chunk.centre.distanceTo(cameraPosition);
+        const frac = THREE.MathUtils.clamp(1 - (distance - 18) / 60, 0.3, 1);
+        const density = quality * frac;
+        chunk.mesh.count = Math.floor(perChunk * density);
+        chunk.mesh.userData.lod = THREE.MathUtils.clamp(Math.sqrt(REFERENCE_DENSITY / density), 1, 2.3);
+        drawn += chunk.mesh.count;
+      }
     }
   };
 }
