@@ -15,7 +15,7 @@ const DAY: Theme = {
   fog: "#b9e0e4", sun: "#fff0d6", sunIntensity: 3.4,
   hemiSky: "#bcd4ff", hemiGround: "#4a3a28", hemiIntensity: 0.3,
   env: 0.55, exposure: 0.9,
-  cloud: "#ffffff", mountain: "#ffffff", ray: "#fff1c9", rayOpacity: 0.07
+  cloud: "#ffffff", mountain: "#ffffff", ray: "#fff1c9", rayOpacity: 0.12
 };
 
 const NIGHT: Theme = {
@@ -23,7 +23,7 @@ const NIGHT: Theme = {
   fog: "#3a2262", sun: "#8fa6ff", sunIntensity: 1.7,
   hemiSky: "#6a5cc0", hemiGround: "#1a1030", hemiIntensity: 0.8,
   env: 0.55, exposure: 1.2,
-  cloud: "#5d5496", mountain: "#6a5fa0", ray: "#8fa0ff", rayOpacity: 0.04
+  cloud: "#756bb0", mountain: "#6a5fa0", ray: "#8fa0ff", rayOpacity: 0.06
 };
 
 export interface Atmosphere {
@@ -93,51 +93,77 @@ function setSkyColours(material: THREE.ShaderMaterial, a: Theme, b: Theme, k: nu
   (u.uGlow!.value as THREE.Color).set(a.glow).lerp(new THREE.Color(b.glow), k);
 }
 
+interface CloudLayer { group: THREE.Group; speed: number; phase: number }
+
+/** Cumulus-style clumps: a wide flat base with a billowing mound of domes on top. Three layers drift at different speeds for parallax. */
 function cloudSea(): THREE.Group {
-  const group = new THREE.Group();
+  const root = new THREE.Group();
   const rand = random(0x51ca);
-  const puffs: THREE.Matrix4[] = [];
+  const material = new THREE.MeshStandardMaterial({
+    color: "#ffffff", roughness: 1, metalness: 0, flatShading: true, emissive: "#9fb4d8", emissiveIntensity: 0.3
+  });
+  const layers: CloudLayer[] = [];
+  const specs = [
+    { rMin: 0, rMax: 75, clumps: 85, detail: 1, size: [4.5, 8], speed: 0.004 },
+    { rMin: 60, rMax: 160, clumps: 110, detail: 1, size: [6, 11], speed: 0.0026 },
+    { rMin: 150, rMax: 300, clumps: 90, detail: 0, size: [10, 20], speed: 0.0014 }
+  ];
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
-  for (let c = 0; c < 230; c += 1) {
-    const angle = rand() * Math.PI * 2;
-    const radius = Math.sqrt(rand()) * 200;
-    const cx = Math.cos(angle) * radius;
-    const cz = Math.sin(angle) * radius;
-    const baseY = -11.5 + (rand() - 0.5) * 3;
-    const n = 6 + Math.floor(rand() * 6);
-    for (let i = 0; i < n; i += 1) {
-      const s = 3 + rand() * 4.5;
-      e.set(rand() * 0.6, rand() * Math.PI * 2, rand() * 0.6);
-      q.setFromEuler(e);
-      m.compose(
-        new THREE.Vector3(cx + (rand() - 0.5) * 12, baseY + rand() * 2.5, cz + (rand() - 0.5) * 12),
-        q,
-        new THREE.Vector3(s * 1.3, s * 0.62, s * 1.1)
-      );
-      puffs.push(m.clone());
-    }
-  }
-  const material = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, metalness: 0, flatShading: true, emissive: "#9fb4d8", emissiveIntensity: 0.35 });
-  const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), material, puffs.length);
   const tint = new THREE.Color();
-  puffs.forEach((matrix, i) => {
-    mesh.setMatrixAt(i, matrix);
-    const v = 0.9 + rand() * 0.1;
-    mesh.setColorAt(i, tint.setRGB(v, v, 1));
+  const white = new THREE.Color("#ffffff");
+  const shade = new THREE.Color("#a9bddd");
+
+  specs.forEach((spec, layerIndex) => {
+    const entries: { matrix: THREE.Matrix4; colour: THREE.Color }[] = [];
+    const add = (x: number, y: number, z: number, sx: number, sy: number, sz: number, height01: number): void => {
+      e.set(rand() * 0.5, rand() * Math.PI * 2, rand() * 0.5);
+      q.setFromEuler(e);
+      m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz));
+      const colour = tint.clone().copy(shade).lerp(white, THREE.MathUtils.clamp(0.25 + height01 * 0.9 + (rand() - 0.5) * 0.15, 0, 1));
+      entries.push({ matrix: m.clone(), colour });
+    };
+    for (let c = 0; c < spec.clumps; c += 1) {
+      const angle = rand() * Math.PI * 2;
+      const radius = spec.rMin + Math.sqrt(rand()) * (spec.rMax - spec.rMin);
+      const cx = Math.cos(angle) * radius;
+      const cz = Math.sin(angle) * radius;
+      const s = spec.size[0]! + rand() * (spec.size[1]! - spec.size[0]!);
+      const baseY = -11.2 + (rand() - 0.5) * 2.2 + layerIndex * 0.6;
+      add(cx, baseY, cz, s * 1.9, s * 0.3, s * 1.5, 0);
+      const domes = 4 + Math.floor(rand() * 4);
+      for (let d = 0; d < domes; d += 1) {
+        const a = rand() * Math.PI * 2;
+        const r = Math.sqrt(rand()) * s * 0.95;
+        const mound = 1 - r / (s * 0.95 + 0.001);
+        const ds = s * (0.38 + 0.4 * mound + rand() * 0.18);
+        const y = baseY + s * (0.1 + 0.55 * mound);
+        add(cx + Math.cos(a) * r * 1.2, y, cz + Math.sin(a) * r, ds * 1.1, ds * 0.85, ds, 0.3 + mound * 0.7);
+      }
+    }
+    const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, spec.detail), material, entries.length);
+    entries.forEach((entry, i) => {
+      mesh.setMatrixAt(i, entry.matrix);
+      mesh.setColorAt(i, entry.colour);
+    });
+    mesh.frustumCulled = false;
+    const group = new THREE.Group();
+    group.add(mesh);
+    root.add(group);
+    layers.push({ group, speed: spec.speed, phase: rand() * 6 });
   });
-  mesh.frustumCulled = false;
-  group.add(mesh);
+
   // Solid cloud floor so nothing below the sea is ever visible between puffs.
   const floorMaterial = new THREE.MeshStandardMaterial({ color: "#a9bfdc", roughness: 1, metalness: 0 });
   const floor = new THREE.Mesh(new THREE.CircleGeometry(430, 48), floorMaterial);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -12.5;
-  group.add(floor);
-  group.userData.material = material;
-  group.userData.floor = floorMaterial;
-  return group;
+  floor.position.y = -12.8;
+  root.add(floor);
+  root.userData.material = material;
+  root.userData.floor = floorMaterial;
+  root.userData.layers = layers;
+  return root;
 }
 
 function mountains(): THREE.Group {
@@ -174,7 +200,7 @@ function mountains(): THREE.Group {
     const mesh = new THREE.Mesh(geometry, material);
     const angle = (i / count) * Math.PI * 2 + rand() * 0.5;
     const dist = 170 + rand() * 70;
-    const tipY = -2 + rand() * 16;
+    const tipY = 6 + rand() * 24;
     mesh.position.set(Math.cos(angle) * dist, tipY - height / 2, Math.sin(angle) * dist);
     mesh.rotation.y = rand() * Math.PI;
     group.add(mesh);
@@ -206,6 +232,7 @@ function stars(): THREE.InstancedMesh {
   return mesh;
 }
 
+/** Soft streaky light shafts. They fade near the camera and the ground, and breathe slowly. */
 function sunShafts(sunDir: THREE.Vector3): { group: THREE.Group; material: THREE.ShaderMaterial } {
   const group = new THREE.Group();
   const rand = random(0x9a75);
@@ -215,35 +242,58 @@ function sunShafts(sunDir: THREE.Vector3): { group: THREE.Group; material: THREE
     blending: THREE.AdditiveBlending,
     fog: false,
     side: THREE.DoubleSide,
-    uniforms: { uColor: { value: new THREE.Color() }, uOpacity: { value: 0.07 }, uTime: { value: 0 } },
+    uniforms: { uColor: { value: new THREE.Color() }, uOpacity: { value: 0.1 }, uTime: { value: 0 } },
     vertexShader: `
+      attribute float aSeed;
       varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      varying vec3 vWorld;
+      varying float vSeed;
+      void main() {
+        vUv = uv;
+        vSeed = aSeed;
+        vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
     fragmentShader: `
       uniform vec3 uColor; uniform float uOpacity; uniform float uTime;
-      varying vec2 vUv;
+      varying vec2 vUv; varying vec3 vWorld; varying float vSeed;
+      float hash(float n) { return fract(sin(n) * 43758.5453); }
+      float noise(float x) { float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(hash(i), hash(i + 1.0), f); }
       void main() {
-        float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
-        across *= across;
-        float along = smoothstep(0.0, 0.12, vUv.y) * (1.0 - smoothstep(0.55, 1.0, vUv.y));
-        float shimmer = 0.8 + 0.2 * sin(uTime * 0.5 + vUv.y * 5.0);
-        gl_FragColor = vec4(uColor, across * along * shimmer * uOpacity);
+        float edge = 1.0 - abs(vUv.x * 2.0 - 1.0);
+        float across = smoothstep(0.0, 0.85, edge);
+        float streak = 0.45 + 0.55 * noise(vUv.x * 14.0 + vSeed * 17.0 + uTime * 0.05);
+        float along = smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.45, 1.0, vUv.y));
+        float breathe = 0.65 + 0.35 * sin(uTime * 0.35 + vSeed * 6.2831);
+        float camFade = smoothstep(5.0, 30.0, distance(vWorld, cameraPosition));
+        gl_FragColor = vec4(uColor, across * streak * along * breathe * camFade * uOpacity);
       }`
   });
-  const length = 70;
+  const length = 75;
+  const count = 14;
   const dir = sunDir.clone().normalize();
   const align = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-  for (let i = 0; i < 10; i += 1) {
-    const width = 2.5 + rand() * 4.5;
-    const base = new THREE.Vector3((rand() * 2 - 1) * 15, 1.5, (rand() * 2 - 1) * 15);
-    for (const turn of [0, Math.PI / 2]) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, length), material);
-      mesh.quaternion.copy(align).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), turn));
-      mesh.position.copy(base).addScaledVector(dir, length / 2);
-      mesh.frustumCulled = false;
-      group.add(mesh);
-    }
+  const geometry = new THREE.PlaneGeometry(1, length);
+  const seeds = new Float32Array(count * 2);
+  const mesh = new THREE.InstancedMesh(geometry, material, count * 2);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  for (let i = 0; i < count; i += 1) {
+    const width = 2 + rand() * 6;
+    const base = new THREE.Vector3((rand() * 2 - 1) * 16, 0.8, (rand() * 2 - 1) * 16);
+    const centre = base.clone().addScaledVector(dir, length / 2);
+    const seed = rand();
+    [0, Math.PI / 2].forEach((turn, k) => {
+      q.copy(align).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), turn));
+      m.compose(centre, q, new THREE.Vector3(width, 1, 1));
+      mesh.setMatrixAt(i * 2 + k, m);
+      seeds[i * 2 + k] = seed;
+    });
   }
+  geometry.setAttribute("aSeed", new THREE.InstancedBufferAttribute(seeds, 1));
+  mesh.frustumCulled = false;
+  group.add(mesh);
   return { group, material };
 }
 
@@ -311,7 +361,10 @@ export function createAtmosphere({ renderer, scene, sun, hemi, sunDir }: Options
         k = target > k ? Math.min(target, k + dt * 0.7) : Math.max(target, k - dt * 0.7);
         apply();
       }
-      clouds.rotation.y += dt * 0.003;
+      for (const layer of clouds.userData.layers as CloudLayer[]) {
+        layer.group.rotation.y += dt * layer.speed;
+        layer.group.position.y = Math.sin(time * 0.12 + layer.phase) * 0.35;
+      }
       starField.rotation.y += dt * 0.002;
       shafts.material.uniforms.uTime!.value = time;
     },
