@@ -6,10 +6,11 @@
     <title>Deskbound</title>
   </head>
   <body>
+    <div id="tools"><button data-tool="move" class="on">Move</button><button data-tool="dig" >Dig</button><button data-tool="fill">Fill</button></div>
     <canvas id="view"></canvas>
     <div class="vignette" aria-hidden="true"></div>
     <div id="loading" class="loading">Loading…</div>
-    <div class="hint">Drag the crate · drag the ground to orbit · WASD or right-drag to move · Q/E rotate · scroll or pinch to zoom · V reset · N day/night · G quality · F3 stats</div>
+    <div class="hint">1 move · 2 dig · 3 fill · [ ] brush · Space orbit · Drag the crate · drag the ground to orbit · WASD or right-drag to move · Q/E rotate · scroll or pinch to zoom · V reset · N day/night · G quality · F3 stats</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

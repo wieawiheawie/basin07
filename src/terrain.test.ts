@@ -28,3 +28,17 @@ describe("terrain", () => {
     expect(up).toBe(indices.length / 3);
   });
 });
+
+describe("digging", () => {
+  it("lowers ground, respects bedrock, and samples match the mesh", () => {
+    const t = createTerrain();
+    const before = t.sample(2, 2);
+    expect(Math.abs(before - groundHeight(2, 2))).toBeLessThan(0.05);
+    for (let i = 0; i < 200; i += 1) t.brush("dig", 2, 2, 1.2, 0.1);
+    expect(t.sample(2, 2)).toBeLessThan(before - 0.2);
+    expect(t.sample(2, 2)).toBeGreaterThanOrEqual(0.03 - 1e-6);
+    expect(t.delta(2, 2)).toBeLessThan(0);
+    t.brush("fill", 2, 2, 1.2, 0.3);
+    expect(t.sample(2, 2)).toBeGreaterThan(0.03);
+  });
+});

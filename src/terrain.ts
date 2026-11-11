@@ -59,16 +59,34 @@ export function lushness(x: number, z: number): number {
   return lushnessFromHeight(groundHeight(x, z));
 }
 
+export type BrushKind = "dig" | "fill";
+
+export interface Rect { x0: number; x1: number; z0: number; z1: number }
+
+/** Lowest the ground can be dug: just above the wooden tabletop. */
+export const BEDROCK = 0.03;
+/** Highest the ground can be built up: just under the rim top. */
+export const CEILING = 1.45;
+
 export interface Terrain {
   mesh: THREE.Mesh;
   positions: Float32Array;
   indices: Uint32Array;
-  /** Physics heightfield: heights[ix * (segments + 1) + iz], spanning -extent/2..extent/2 on x and z. */
+  /** Physics heightfield: heights[ix * (segments + 1) + iz], spanning -extent/2..extent/2 on x and z. Edited in place by `brush`. */
   heightfield: { segments: number; extent: number; heights: Float32Array };
+  /** Current ground height at (x, z), matching the rendered and physical surface. */
+  sample(x: number, z: number): number;
+  /** Current height minus the original generated height at (x, z): negative where dug, positive where built up. */
+  delta(x: number, z: number): number;
+  /** Dig or fill with a round brush. Returns the world-space area that changed. */
+  brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect;
+  /** First point where a ray meets the ground, or null. */
+  raycast(ray: THREE.Ray, maxDistance?: number): THREE.Vector3 | null;
 }
 
 export function createTerrain(): Terrain {
   const side = SEGMENTS + 1;
+  const cell = (MESH_HALF * 2) / SEGMENTS;
   const positions = new Float32Array(side * side * 3);
   const colours = new Float32Array(side * side * 3);
   const heights = new Float32Array(side * side);
@@ -97,6 +115,8 @@ export function createTerrain(): Terrain {
       colours[i * 3 + 2] = tint.b;
     }
   }
+  const base = heights.slice();
+  const baseColours = colours.slice();
 
   const indices = new Uint32Array(SEGMENTS * SEGMENTS * 6);
   let n = 0;
@@ -112,14 +132,118 @@ export function createTerrain(): Terrain {
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
+  const positionAttribute = new THREE.BufferAttribute(positions, 3);
+  const colourAttribute = new THREE.BufferAttribute(colours, 3);
+  positionAttribute.setUsage(THREE.DynamicDrawUsage);
+  colourAttribute.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute("position", positionAttribute);
+  geometry.setAttribute("color", colourAttribute);
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.5, 0), MESH_HALF * 1.5);
 
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.castShadow = false;
-  return { mesh, positions, indices, heightfield: { segments: SEGMENTS, extent: MESH_HALF * 2, heights } };
+
+  /** Triangle-accurate height from a grid array, matching how the mesh is triangulated. */
+  function interpolate(grid: Float32Array, x: number, z: number): number {
+    const fx = THREE.MathUtils.clamp((x + MESH_HALF) / cell, 0, SEGMENTS - 1e-6);
+    const fz = THREE.MathUtils.clamp((z + MESH_HALF) / cell, 0, SEGMENTS - 1e-6);
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const u = fx - ix;
+    const v = fz - iz;
+    const a = grid[ix * side + iz]!;
+    const b = grid[(ix + 1) * side + iz]!;
+    const c = grid[ix * side + iz + 1]!;
+    const d = grid[(ix + 1) * side + iz + 1]!;
+    return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (b - d) * (1 - v) + (c - d) * (1 - u);
+  }
+
+  const dug = new THREE.Color("#3a2a1a");
+  const mixed = new THREE.Color();
+
+  function brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect {
+    const reach = radius * 1.7;
+    const ix0 = Math.max(0, Math.floor((x - reach + MESH_HALF) / cell));
+    const ix1 = Math.min(SEGMENTS, Math.ceil((x + reach + MESH_HALF) / cell));
+    const iz0 = Math.max(0, Math.floor((z - reach + MESH_HALF) / cell));
+    const iz1 = Math.min(SEGMENTS, Math.ceil((z + reach + MESH_HALF) / cell));
+    for (let iz = iz0; iz <= iz1; iz += 1) {
+      for (let ix = ix0; ix <= ix1; ix += 1) {
+        const wx = -MESH_HALF + ix * cell;
+        const wz = -MESH_HALF + iz * cell;
+        const d = Math.hypot(wx - x, wz - z) / radius;
+        if (d >= 1.7) continue;
+        const core = d < 1 ? 0.5 * (1 + Math.cos(Math.PI * d)) : 0;
+        let change = 0;
+        if (kind === "dig") {
+          // Digging also throws a little soil up around the edge of the hole.
+          const spoil = d >= 1 ? Math.sin((Math.PI * (d - 1)) / 0.7) ** 2 : 0;
+          change = -amount * core + amount * 0.22 * spoil;
+        } else {
+          change = amount * core;
+        }
+        if (change === 0) continue;
+        const hi = ix * side + iz;
+        const h = THREE.MathUtils.clamp(heights[hi]! + change, BEDROCK, CEILING);
+        heights[hi] = h;
+        const i = iz * side + ix;
+        positions[i * 3 + 1] = h;
+        // Disturbed ground turns to soil, darker the deeper it is dug.
+        const edited = THREE.MathUtils.clamp(Math.abs(h - base[hi]!) / 0.05, 0, 1);
+        const shade = 1 - THREE.MathUtils.clamp((base[hi]! - h) * 0.35, 0, 0.35);
+        mixed.setRGB(baseColours[i * 3]!, baseColours[i * 3 + 1]!, baseColours[i * 3 + 2]!).lerp(dug, edited).multiplyScalar(shade);
+        colours[i * 3] = mixed.r;
+        colours[i * 3 + 1] = mixed.g;
+        colours[i * 3 + 2] = mixed.b;
+      }
+    }
+    positionAttribute.needsUpdate = true;
+    colourAttribute.needsUpdate = true;
+    return { x0: x - reach, x1: x + reach, z0: z - reach, z1: z + reach };
+  }
+
+  const hit = new THREE.Vector3();
+  const box = new THREE.Box3(new THREE.Vector3(-HALF, 0, -HALF), new THREE.Vector3(HALF, 2.4, HALF));
+  const entry = new THREE.Vector3();
+
+  function raycast(ray: THREE.Ray, maxDistance = 400): THREE.Vector3 | null {
+    if (!ray.intersectBox(box, entry)) return null;
+    const startT = Math.max(0, entry.distanceTo(ray.origin) - 0.01);
+    const step = cell * 0.9;
+    let previous = startT;
+    for (let t = startT; t < Math.min(maxDistance, startT + 120); t += step) {
+      ray.at(t, hit);
+      if (hit.y <= interpolate(heights, hit.x, hit.z)) {
+        // Refine between the last point above ground and this one below it.
+        let lo = previous;
+        let hi = t;
+        for (let k = 0; k < 14; k += 1) {
+          const mid = (lo + hi) / 2;
+          ray.at(mid, hit);
+          if (hit.y <= interpolate(heights, hit.x, hit.z)) hi = mid;
+          else lo = mid;
+        }
+        ray.at(hi, hit);
+        hit.y = interpolate(heights, hit.x, hit.z);
+        return hit.clone();
+      }
+      previous = t;
+    }
+    return null;
+  }
+
+  return {
+    mesh,
+    positions,
+    indices,
+    heightfield: { segments: SEGMENTS, extent: MESH_HALF * 2, heights },
+    sample: (x, z) => interpolate(heights, x, z),
+    delta: (x, z) => interpolate(heights, x, z) - interpolate(base, x, z),
+    brush,
+    raycast
+  };
 }

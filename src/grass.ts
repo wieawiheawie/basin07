@@ -18,6 +18,8 @@ export interface Grass {
   /** Blades drawn last frame. */
   drawn(): number;
   update(time: number, interactors: Interactor[], sunDirView: THREE.Vector3, cameraPosition: THREE.Vector3): void;
+  /** After terrain edits: re-root blades in the area onto the new ground and remove any that were dug out or buried. */
+  rebuildRegion(rect: { x0: number; x1: number; z0: number; z1: number }, heightAt: (x: number, z: number) => number, deltaAt: (x: number, z: number) => number): void;
 }
 
 const CHUNKS = 8;
@@ -238,7 +240,7 @@ export async function createGrass(
   };
   const byte = (v: number): number => Math.max(0, Math.min(255, Math.round(v * 255)));
 
-  interface Chunk { mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; lite: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
+  interface Chunk { roots: Float32Array; shapes: Uint8Array; minX: number; maxX: number; minZ: number; maxZ: number; mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; lite: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
   const chunks: Chunk[] = [];
   for (let cx = 0; cx < CHUNKS; cx += 1) {
     for (let cz = 0; cz < CHUNKS; cz += 1) {
@@ -301,7 +303,7 @@ export async function createGrass(
       // Grass takes its shadow from the analytic box shadow above, not from the shadow map (saves a lot of pixel work).
       mesh.receiveShadow = false;
       mesh.castShadow = false;
-      const chunk: Chunk = { mesh, geometry, lite, centre, lod: 1 };
+      const chunk: Chunk = { roots, shapes, minX: x0, maxX: x0 + chunkSize, minZ: z0, maxZ: z0 + chunkSize, mesh, geometry, lite, centre, lod: 1 };
       mesh.onBeforeRender = () => {
         uniforms.uLod.value = chunk.lod;
       };
@@ -323,6 +325,29 @@ export async function createGrass(
     },
     quality: () => quality,
     drawn: () => drawn,
+    rebuildRegion(rect, heightAt, deltaAt): void {
+      for (const chunk of chunks) {
+        if (chunk.maxX < rect.x0 || chunk.minX > rect.x1 || chunk.maxZ < rect.z0 || chunk.minZ > rect.z1) continue;
+        const { roots, shapes } = chunk;
+        let changed = false;
+        for (let i = 0; i < perChunk; i += 1) {
+          const x = roots[i * 3]!;
+          const z = roots[i * 3 + 2]!;
+          if (x < rect.x0 || x > rect.x1 || z < rect.z0 || z > rect.z1) continue;
+          roots[i * 3 + 1] = heightAt(x, z) - 0.015;
+          // Blades whose ground was dug away or buried are gone for good.
+          if (Math.abs(deltaAt(x, z)) > 0.05) {
+            shapes[i * 4] = 0;
+            shapes[i * 4 + 1] = 0;
+          }
+          changed = true;
+        }
+        if (changed) {
+          chunk.geometry.getAttribute("aRoot").needsUpdate = true;
+          chunk.geometry.getAttribute("aShape").needsUpdate = true;
+        }
+      }
+    },
     update(time: number, interactors: Interactor[], sunDirView: THREE.Vector3, cameraPosition: THREE.Vector3): void {
       uniforms.uTime.value = time;
       uniforms.uSunView.value.copy(sunDirView);

@@ -36,6 +36,8 @@ export interface Physics {
   setGrabTarget(target: THREE.Vector3): void;
   endGrab(): void;
   isGrabbed(): boolean;
+  /** Rebuild the ground collider after the terrain heights were edited, and wake everything resting on it. */
+  updateTerrain(): void;
   /** Put a body back at its spawn point. */
   respawn(body: Body): void;
 }
@@ -60,11 +62,13 @@ export async function createPhysics(
   world.integrationParameters.normalizedAllowedLinearError = 0.0004;
 
   const hf = terrain.heightfield;
-  world.createCollider(
-    RAPIER.ColliderDesc.heightfield(hf.segments, hf.segments, hf.heights, { x: hf.extent, y: 1, z: hf.extent })
-      .setFriction(0.9)
-      .setRestitution(0.05)
-  );
+  const makeGround = (): RAPIER.Collider =>
+    world.createCollider(
+      RAPIER.ColliderDesc.heightfield(hf.segments, hf.segments, hf.heights, { x: hf.extent, y: 1, z: hf.extent })
+        .setFriction(0.9)
+        .setRestitution(0.05)
+    );
+  let ground = makeGround();
   for (const box of boxes) {
     world.createCollider(
       RAPIER.ColliderDesc.cuboid(box.hx, box.hy, box.hz).setTranslation(box.x, box.y, box.z).setFriction(0.7)
@@ -223,6 +227,11 @@ export async function createPhysics(
       held = null;
     },
     isGrabbed: () => held !== null,
+    updateTerrain(): void {
+      world.removeCollider(ground, true);
+      ground = makeGround();
+      for (const r of records) r.rigid.wakeUp();
+    },
     respawn(body: Body): void {
       const record = records.find((r) => r.body === body);
       if (record) spawn(record);

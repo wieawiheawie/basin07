@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createAtmosphere } from "./atmosphere";
 import { createCameraRig } from "./camera";
 import "./style.css";
+import { createDigTool } from "./dig";
 import { createGrass, type Interactor } from "./grass";
 import { setupGrab } from "./input";
 import { createPerfOverlay } from "./perf";
@@ -9,7 +10,7 @@ import { createPhysics } from "./physics";
 import { createProps, syncProps } from "./props";
 import { PRESET_ORDER, presets, type PresetName } from "./quality";
 import { createTable } from "./table";
-import { createTerrain, groundHeight, HALF } from "./terrain";
+import { createTerrain, HALF } from "./terrain";
 
 const params = new URLSearchParams(location.search);
 const MAX_BLADES = 440000;
@@ -60,7 +61,14 @@ async function start(): Promise<void> {
 
   const physics = await createPhysics(terrain, table.boxes);
   const props = createProps(scene, physics, Number(params.get("props") ?? 1));
-  setupGrab({ canvas, camera, physics, props, limit: LIMIT });
+  let dig: ReturnType<typeof createDigTool> | null = null;
+  setupGrab({ canvas, camera, physics, props, limit: LIMIT, enabled: () => (dig?.tool() ?? "move") === "move" });
+  const toolbar = document.getElementById("tools");
+  dig = createDigTool({
+    canvas, camera, scene, terrain, physics, grass,
+    onChange: (tool) => toolbar?.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tool === tool))
+  });
+  toolbar?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => dig?.setTool(b.dataset.tool as "move" | "dig" | "fill")));
   loading?.remove();
 
   function resize(): void {
@@ -135,7 +143,7 @@ async function start(): Promise<void> {
     physics.step(dt);
     syncProps(props);
 
-    let moved = shadowFrames > 0;
+    let moved = shadowFrames > 0 || (dig?.update(dt) ?? false);
     props.forEach((prop, i) => {
       if (prop.body.position.distanceToSquared(lastPos[i]!) > 1e-8 || prop.body.quaternion.angleTo(lastQuat[i]!) > 1e-4) moved = true;
       lastPos[i]!.copy(prop.body.position);
@@ -148,7 +156,7 @@ async function start(): Promise<void> {
     centroid.set(0, 0, 0);
     props.forEach((prop, i) => {
       centroid.add(prop.body.position);
-      const clearance = prop.body.position.y - prop.body.size / 2 - groundHeight(prop.body.position.x, prop.body.position.z);
+      const clearance = prop.body.position.y - prop.body.size / 2 - terrain.sample(prop.body.position.x, prop.body.position.z);
       interactors[i]!.push = THREE.MathUtils.clamp(1 - clearance / (0.45 * prop.body.size), 0, 1);
     });
     centroid.multiplyScalar(1 / props.length);

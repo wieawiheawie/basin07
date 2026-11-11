@@ -5,8 +5,9 @@ import type { Prop } from "./props";
 const LIFT = 0.8;
 
 /** Dragging a prop with a spring "hand". Grabbing takes priority over orbiting the camera. */
-export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camera; physics: Physics; props: Prop[]; limit: number }): void {
+export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camera; physics: Physics; props: Prop[]; limit: number; enabled?: () => boolean }): void {
   const { canvas, camera, physics, props, limit } = opts;
+  const active = (): boolean => opts.enabled?.() ?? true;
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -38,7 +39,7 @@ export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camer
   canvas.addEventListener(
     "pointerdown",
     (event) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || !active()) return;
       aim(event);
       const found = propAt();
       if (!found) return;
@@ -57,7 +58,7 @@ export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camer
   canvas.addEventListener("pointermove", (event) => {
     aim(event);
     if (physics.isGrabbed()) updateTarget();
-    else canvas.style.cursor = propAt() ? "grab" : "default";
+    else if (active()) canvas.style.cursor = propAt() ? "grab" : "default";
   });
 
   const release = (): void => {
