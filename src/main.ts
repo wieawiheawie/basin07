@@ -19,7 +19,7 @@ const SUN_OFFSET = new THREE.Vector3(14, 22, 10);
 async function start(): Promise<void> {
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const loading = document.getElementById("loading");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get("q") !== "low", powerPreference: "high-performance" });
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -42,6 +42,8 @@ async function start(): Promise<void> {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
+  // The shadow map is redrawn only when something moves (see the loop below).
+  sun.shadow.autoUpdate = false;
   const hemi = new THREE.HemisphereLight("#bcd4ff", "#4a3a28", 0.3);
   scene.add(sun, sun.target, hemi);
   const sunDir = SUN_OFFSET.clone().normalize();
@@ -75,6 +77,7 @@ async function start(): Promise<void> {
   const fixedBlades = params.has("blades");
   let preset = all[(params.get("q") as PresetName) in all ? (params.get("q") as PresetName) : "medium"];
   let slowSeen = false;
+  let shadowFrames = 3;
   function applyPreset(next: PresetName): void {
     preset = all[next];
     renderer.setPixelRatio(preset.pixelRatio);
@@ -84,6 +87,7 @@ async function start(): Promise<void> {
     atmosphere.setShafts(preset.shafts);
     grass.setQuality(fixedBlades ? Number(params.get("blades")) / MAX_BLADES : preset.grass);
     slowSeen = false;
+    shadowFrames = 3;
     resize();
   }
   applyPreset(preset.name);
@@ -120,6 +124,8 @@ async function start(): Promise<void> {
   const interactors: Interactor[] = props.map((prop) => ({ object: prop.object, push: 0 }));
   const sunView = new THREE.Vector3();
   const centroid = new THREE.Vector3();
+  const lastPos = props.map((p) => p.body.position.clone());
+  const lastQuat = props.map((p) => p.body.quaternion.clone());
   const clock = new THREE.Clock();
   let frames = 0;
   let accum = 0;
@@ -128,6 +134,15 @@ async function start(): Promise<void> {
     const dt = clock.getDelta();
     physics.step(dt);
     syncProps(props);
+
+    let moved = shadowFrames > 0;
+    props.forEach((prop, i) => {
+      if (prop.body.position.distanceToSquared(lastPos[i]!) > 1e-8 || prop.body.quaternion.angleTo(lastQuat[i]!) > 1e-4) moved = true;
+      lastPos[i]!.copy(prop.body.position);
+      lastQuat[i]!.copy(prop.body.quaternion);
+    });
+    if (moved) sun.shadow.needsUpdate = true;
+    shadowFrames = Math.max(0, shadowFrames - 1);
 
     // Keep the shadow map centred on the props so shadows stay sharp on a big table.
     centroid.set(0, 0, 0);

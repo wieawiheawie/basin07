@@ -106,7 +106,7 @@ function cloudSea(): THREE.Group {
   const layers: CloudLayer[] = [];
   const specs = [
     { rMin: 0, rMax: 75, clumps: 85, detail: 1, size: [4.5, 8], speed: 0.004 },
-    { rMin: 60, rMax: 160, clumps: 110, detail: 1, size: [6, 11], speed: 0.0026 },
+    { rMin: 60, rMax: 160, clumps: 110, detail: 0, size: [6, 11], speed: 0.0026 },
     { rMin: 150, rMax: 300, clumps: 90, detail: 0, size: [10, 20], speed: 0.0014 }
   ];
   const m = new THREE.Matrix4();

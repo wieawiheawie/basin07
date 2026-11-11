@@ -21,8 +21,22 @@ export interface Grass {
 }
 
 const CHUNKS = 8;
+/** Beyond this distance a blade is under a pixel wide, so it is drawn as a single triangle. */
+const LITE_DISTANCE = 36;
 /** Density (share of the full budget) that blades keep their natural width at. Thinner areas get slightly wider blades. */
 const REFERENCE_DENSITY = 0.7;
+
+function liteBladeGeometry(): THREE.BufferGeometry {
+  // One triangle: wide base, pointed tip. Used for distant chunks (3 vertices instead of 5).
+  const base = new THREE.Color("#0f2a0d");
+  const tip = new THREE.Color("#2c5a1b").lerp(new THREE.Color("#6c9633"), 0.6);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array([-0.6, 0, 0, 0.6, 0, 0, 0, 1, 0.25]), 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array([...base.toArray(), ...base.toArray(), ...tip.toArray()]), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array([0, 1, 0.15, 0, 1, 0.15, 0, 1, 0.05]), 3));
+  geometry.setIndex([0, 1, 2]);
+  return geometry;
+}
 
 function bladeGeometry(): THREE.BufferGeometry {
   // Unit-height blade: wide base, narrowing mid section, curved tip. Scaled per instance.
@@ -214,6 +228,7 @@ export async function createGrass(
   };
 
   const base = bladeGeometry();
+  const liteBase = liteBladeGeometry();
   const group = new THREE.Group();
   const chunkSize = (HALF * 2) / CHUNKS;
   let seed = 0x1badf00d;
@@ -223,7 +238,7 @@ export async function createGrass(
   };
   const byte = (v: number): number => Math.max(0, Math.min(255, Math.round(v * 255)));
 
-  interface Chunk { mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
+  interface Chunk { mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; lite: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
   const chunks: Chunk[] = [];
   for (let cx = 0; cx < CHUNKS; cx += 1) {
     for (let cz = 0; cz < CHUNKS; cz += 1) {
@@ -275,11 +290,18 @@ export async function createGrass(
       // Tight bounds so off-screen chunks are skipped entirely.
       geometry.boundingSphere = new THREE.Sphere(centre.clone(), chunkSize * 0.71 + 1.8);
 
+      // Same per-blade data, simpler blade shape, for distant chunks.
+      const lite = new THREE.InstancedBufferGeometry();
+      lite.index = liteBase.index;
+      for (const name of ["position", "color", "normal"]) lite.setAttribute(name, liteBase.getAttribute(name));
+      for (const name of ["aRoot", "aShape", "aTint"]) lite.setAttribute(name, geometry.getAttribute(name));
+      lite.boundingSphere = geometry.boundingSphere;
+
       const mesh = new THREE.Mesh(geometry, material);
       // Grass takes its shadow from the analytic box shadow above, not from the shadow map (saves a lot of pixel work).
       mesh.receiveShadow = false;
       mesh.castShadow = false;
-      const chunk: Chunk = { mesh, geometry, centre, lod: 1 };
+      const chunk: Chunk = { mesh, geometry, lite, centre, lod: 1 };
       mesh.onBeforeRender = () => {
         uniforms.uLod.value = chunk.lod;
       };
@@ -321,8 +343,11 @@ export async function createGrass(
         const frac = THREE.MathUtils.clamp(1 - (distance - 18) / 60, 0.3, 1);
         const density = quality * frac;
         const n = Math.floor(perChunk * density);
-        chunk.geometry.instanceCount = n;
-        chunk.lod = THREE.MathUtils.clamp(Math.sqrt(REFERENCE_DENSITY / density), 1, 2.3);
+        const useLite = distance > LITE_DISTANCE;
+        const active = useLite ? chunk.lite : chunk.geometry;
+        if (chunk.mesh.geometry !== active) chunk.mesh.geometry = active;
+        active.instanceCount = n;
+        chunk.lod = THREE.MathUtils.clamp(Math.sqrt(REFERENCE_DENSITY / density), 1, 2.3) * (useLite ? 1.25 : 1);
         drawn += n;
       }
     }
