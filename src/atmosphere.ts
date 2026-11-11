@@ -29,6 +29,7 @@ const NIGHT: Theme = {
 export interface Atmosphere {
   update(dt: number, time: number): void;
   toggle(): void;
+  setShafts(visible: boolean): void;
   isNight(): boolean;
 }
 
@@ -271,7 +272,7 @@ function sunShafts(sunDir: THREE.Vector3): { group: THREE.Group; material: THREE
       }`
   });
   const length = 75;
-  const count = 14;
+  const count = 10;
   const dir = sunDir.clone().normalize();
   const align = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
   const geometry = new THREE.PlaneGeometry(1, length);
@@ -370,6 +371,9 @@ export function createAtmosphere({ renderer, scene, sun, hemi, sunDir }: Options
     },
     toggle(): void {
       target = target === 0 ? 1 : 0;
+    },
+    setShafts(visible: boolean): void {
+      shafts.group.visible = visible;
     },
     isNight: () => target === 1
   };

@@ -1,33 +1,53 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
-import { CRATE_SIZE } from "./crate";
 import type { StaticBox } from "./table";
 
 const STEP = 1 / 120;
 const GRAVITY = 22;
-const CRATE_MASS = 4;
-/** Strongest pull the "hand" can exert. Crate weight is CRATE_MASS * GRAVITY = 88, so lifting it is possible but sluggish. */
-const MAX_GRAB_FORCE = 175;
-const GRAB_STIFFNESS = 760;
-const GRAB_DAMPING = 78;
+/** Strongest pull the "hand" can exert, per unit of mass (a 4 kg crate has weight 88, so lifting it is possible but sluggish). */
+const MAX_GRAB_FORCE_PER_MASS = 43.75;
+const GRAB_STIFFNESS_PER_MASS = 190;
+const GRAB_DAMPING_PER_MASS = 19.5;
 const LEVEL_STIFFNESS = 26;
 const LEVEL_DAMPING = 3;
 const UP = new THREE.Vector3(0, 1, 0);
 const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
 
-export interface CrateState {
-  position: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-  velocity: THREE.Vector3;
+/** A dynamic box. Position and rotation are smoothed between physics steps; the objects are reused every frame. */
+export interface Body {
+  readonly position: THREE.Vector3;
+  readonly quaternion: THREE.Quaternion;
+  readonly velocity: THREE.Vector3;
+  readonly size: number;
+  readonly mass: number;
+}
+
+export interface BoxOptions {
+  size: number;
+  mass: number;
+  position: [number, number, number];
+  euler: [number, number, number];
 }
 
 export interface Physics {
   step(dt: number): void;
-  crate(): CrateState;
-  beginGrab(localPoint: THREE.Vector3): void;
+  addBox(options: BoxOptions): Body;
+  beginGrab(body: Body, localPoint: THREE.Vector3): void;
   setGrabTarget(target: THREE.Vector3): void;
   endGrab(): void;
   isGrabbed(): boolean;
+  /** Put a body back at its spawn point. */
+  respawn(body: Body): void;
+}
+
+interface Record {
+  body: Body & { position: THREE.Vector3; quaternion: THREE.Quaternion; velocity: THREE.Vector3 };
+  rigid: RAPIER.RigidBody;
+  options: BoxOptions;
+  prevPos: THREE.Vector3;
+  prevQuat: THREE.Quaternion;
+  curPos: THREE.Vector3;
+  curQuat: THREE.Quaternion;
 }
 
 export async function createPhysics(
@@ -37,9 +57,8 @@ export async function createPhysics(
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
   world.timestep = STEP;
-
   world.integrationParameters.normalizedAllowedLinearError = 0.0004;
-  world.integrationParameters.normalizedPredictionDistance = 0.004;
+
   const hf = terrain.heightfield;
   world.createCollider(
     RAPIER.ColliderDesc.heightfield(hf.segments, hf.segments, hf.heights, { x: hf.extent, y: 1, z: hf.extent })
@@ -52,72 +71,79 @@ export async function createPhysics(
     );
   }
 
-  const spawn = (): void => {
-    body.setTranslation({ x: -0.6, y: 3.2, z: 0.4 }, true);
-    body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0.7, 0.25)), true);
-    body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-  };
-
-  const body = world.createRigidBody(
-    RAPIER.RigidBodyDesc.dynamic().setLinearDamping(0.12).setAngularDamping(0.9).setCcdEnabled(true)
-  );
-  const half = CRATE_SIZE / 2;
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(half, half, half)
-      .setDensity(CRATE_MASS / (CRATE_SIZE ** 3))
-      .setFriction(0.85)
-      .setRestitution(0.12),
-    body
-  );
-  spawn();
-
+  const records: Record[] = [];
   let accumulator = 0;
-  let grabbed = false;
+  let held: Record | null = null;
   const localPoint = new THREE.Vector3();
   const target = new THREE.Vector3();
-  const scratchQuat = new THREE.Quaternion();
-  const scratchPoint = new THREE.Vector3();
-  const scratchForce = new THREE.Vector3();
-  const scratchVel = new THREE.Vector3();
-  const scratchAng = new THREE.Vector3();
-  const scratchAxis = new THREE.Vector3();
-  const scratchTorque = new THREE.Vector3();
 
-  function applyGrab(dt: number): void {
-    const t = body.translation();
-    const q = body.rotation();
-    scratchQuat.set(q.x, q.y, q.z, q.w);
-    scratchPoint.copy(localPoint).applyQuaternion(scratchQuat);
-    const offset = scratchPoint.clone();
-    scratchPoint.add(new THREE.Vector3(t.x, t.y, t.z));
+  // Scratch objects, reused so stepping never allocates.
+  const q = new THREE.Quaternion();
+  const offset = new THREE.Vector3();
+  const point = new THREE.Vector3();
+  const velocityAtPoint = new THREE.Vector3();
+  const angular = new THREE.Vector3();
+  const force = new THREE.Vector3();
+  const axis = new THREE.Vector3();
+  const bestAxis = new THREE.Vector3();
+  const torque = new THREE.Vector3();
+  const euler = new THREE.Euler();
 
-    const lv = body.linvel();
-    const av = body.angvel();
-    scratchAng.set(av.x, av.y, av.z);
-    scratchVel.set(lv.x, lv.y, lv.z).add(scratchAng.cross(offset));
+  function spawn(record: Record): void {
+    const { position, euler: e } = record.options;
+    record.rigid.setTranslation({ x: position[0], y: position[1], z: position[2] }, true);
+    record.rigid.setRotation(q.setFromEuler(euler.set(e[0], e[1], e[2])), true);
+    record.rigid.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    record.rigid.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    read(record);
+    record.prevPos.copy(record.curPos);
+    record.prevQuat.copy(record.curQuat);
+  }
 
-    // Hold the crate roughly level: torque its nearest face toward world-up, like a hand steadying it.
-    let best = 0;
+  function read(record: Record): void {
+    const t = record.rigid.translation();
+    const r = record.rigid.rotation();
+    record.curPos.set(t.x, t.y, t.z);
+    record.curQuat.set(r.x, r.y, r.z, r.w);
+  }
+
+  function applyGrab(record: Record, dt: number): void {
+    const mass = record.body.mass;
+    q.copy(record.curQuat);
+    offset.copy(localPoint).applyQuaternion(q);
+    point.copy(offset).add(record.curPos);
+
+    const lv = record.rigid.linvel();
+    const av = record.rigid.angvel();
+    angular.set(av.x, av.y, av.z);
+    velocityAtPoint.set(lv.x, lv.y, lv.z).add(angular.cross(offset));
+
+    // Hold the body roughly level: torque its nearest face toward world-up, like a hand steadying it.
     let bestDot = -2;
-    let bestAxis = scratchAxis;
-    for (const axis of AXES) {
-      scratchAxis.copy(axis).applyQuaternion(scratchQuat);
+    let bestSign = 1;
+    for (const a of AXES) {
+      axis.copy(a).applyQuaternion(q);
       for (const sign of [1, -1]) {
-        const d = scratchAxis.y * sign;
-        if (d > bestDot) { bestDot = d; best = sign; bestAxis = scratchAxis.clone(); }
+        const d = axis.y * sign;
+        if (d > bestDot) {
+          bestDot = d;
+          bestSign = sign;
+          bestAxis.copy(axis);
+        }
       }
     }
-    scratchTorque.copy(bestAxis).multiplyScalar(best).cross(UP).multiplyScalar(LEVEL_STIFFNESS);
-    scratchTorque.addScaledVector(scratchAng.set(av.x, av.y, av.z), -LEVEL_DAMPING).multiplyScalar(dt);
-    body.applyTorqueImpulse({ x: scratchTorque.x, y: scratchTorque.y, z: scratchTorque.z }, true);
+    angular.set(av.x, av.y, av.z);
+    torque.copy(bestAxis).multiplyScalar(bestSign).cross(UP).multiplyScalar(LEVEL_STIFFNESS * mass / 4);
+    torque.addScaledVector(angular, (-LEVEL_DAMPING * mass) / 4).multiplyScalar(dt);
+    record.rigid.applyTorqueImpulse({ x: torque.x, y: torque.y, z: torque.z }, true);
 
-    scratchForce.copy(target).sub(scratchPoint).multiplyScalar(GRAB_STIFFNESS).addScaledVector(scratchVel, -GRAB_DAMPING);
-    if (scratchForce.length() > MAX_GRAB_FORCE) scratchForce.setLength(MAX_GRAB_FORCE);
-    scratchForce.multiplyScalar(dt);
-    body.applyImpulseAtPoint(
-      { x: scratchForce.x, y: scratchForce.y, z: scratchForce.z },
-      { x: scratchPoint.x, y: scratchPoint.y, z: scratchPoint.z },
+    force.copy(target).sub(point).multiplyScalar(GRAB_STIFFNESS_PER_MASS * mass).addScaledVector(velocityAtPoint, -GRAB_DAMPING_PER_MASS * mass);
+    const maxForce = MAX_GRAB_FORCE_PER_MASS * mass;
+    if (force.length() > maxForce) force.setLength(maxForce);
+    force.multiplyScalar(dt);
+    record.rigid.applyImpulseAtPoint(
+      { x: force.x, y: force.y, z: force.z },
+      { x: point.x, y: point.y, z: point.z },
       true
     );
   }
@@ -126,37 +152,80 @@ export async function createPhysics(
     step(dt: number): void {
       accumulator += Math.min(dt, 0.05);
       while (accumulator >= STEP) {
-        if (grabbed) applyGrab(STEP);
+        for (const r of records) {
+          r.prevPos.copy(r.curPos);
+          r.prevQuat.copy(r.curQuat);
+        }
+        if (held) applyGrab(held, STEP);
         world.step();
+        for (const r of records) read(r);
         accumulator -= STEP;
       }
-      if (body.translation().y < -8) spawn();
+      // Smooth between the last two physics states so motion stays even on any refresh rate.
+      const alpha = accumulator / STEP;
+      for (const r of records) {
+        if (r.curPos.y < -8) spawn(r);
+        r.body.position.lerpVectors(r.prevPos, r.curPos, alpha);
+        r.body.quaternion.slerpQuaternions(r.prevQuat, r.curQuat, alpha);
+        const v = r.rigid.linvel();
+        r.body.velocity.set(v.x, v.y, v.z);
+      }
     },
-    crate(): CrateState {
-      const t = body.translation();
-      const q = body.rotation();
-      const v = body.linvel();
-      return {
-        position: new THREE.Vector3(t.x, t.y, t.z),
-        quaternion: new THREE.Quaternion(q.x, q.y, q.z, q.w),
-        velocity: new THREE.Vector3(v.x, v.y, v.z)
+    addBox(options: BoxOptions): Body {
+      const rigid = world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic().setLinearDamping(0.12).setAngularDamping(0.9).setCcdEnabled(true)
+      );
+      const half = options.size / 2;
+      world.createCollider(
+        RAPIER.ColliderDesc.cuboid(half, half, half)
+          .setDensity(options.mass / options.size ** 3)
+          .setFriction(0.85)
+          .setRestitution(0.12),
+        rigid
+      );
+      const record: Record = {
+        body: {
+          position: new THREE.Vector3(),
+          quaternion: new THREE.Quaternion(),
+          velocity: new THREE.Vector3(),
+          size: options.size,
+          mass: options.mass
+        },
+        rigid,
+        options,
+        prevPos: new THREE.Vector3(),
+        prevQuat: new THREE.Quaternion(),
+        curPos: new THREE.Vector3(),
+        curQuat: new THREE.Quaternion()
       };
+      spawn(record);
+      record.body.position.copy(record.curPos);
+      record.body.quaternion.copy(record.curQuat);
+      records.push(record);
+      return record.body;
     },
-    beginGrab(point: THREE.Vector3): void {
-      localPoint.copy(point);
-      grabbed = true;
-      body.setAngularDamping(5);
+    beginGrab(body: Body, point3: THREE.Vector3): void {
+      const record = records.find((r) => r.body === body);
+      if (!record) return;
+      held = record;
+      localPoint.copy(point3);
+      record.rigid.setAngularDamping(5);
     },
-    setGrabTarget(point: THREE.Vector3): void {
-      target.copy(point);
+    setGrabTarget(point3: THREE.Vector3): void {
+      target.copy(point3);
     },
     endGrab(): void {
-      grabbed = false;
-      body.setAngularDamping(0.9);
-      const v = body.linvel();
+      if (!held) return;
+      held.rigid.setAngularDamping(0.9);
+      const v = held.rigid.linvel();
       const speed = Math.hypot(v.x, v.y, v.z);
-      if (speed > 12) body.setLinvel({ x: (v.x / speed) * 12, y: (v.y / speed) * 12, z: (v.z / speed) * 12 }, true);
+      if (speed > 12) held.rigid.setLinvel({ x: (v.x / speed) * 12, y: (v.y / speed) * 12, z: (v.z / speed) * 12 }, true);
+      held = null;
     },
-    isGrabbed: () => grabbed
+    isGrabbed: () => held !== null,
+    respawn(body: Body): void {
+      const record = records.find((r) => r.body === body);
+      if (record) spawn(record);
+    }
   };
 }
