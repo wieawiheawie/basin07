@@ -215,7 +215,6 @@ export function createTerrain(): Terrain {
         mixed.lerp(subsoil, sstep(depth, 0.12, 0.22));
         mixed.lerp(clay, sstep(depth, 0.34, 0.44));
         mixed.lerp(stone, sstep(depth, 0.62, 0.72));
-        mixed.multiplyScalar(1 + Math.sin(depth * 70) * 0.05 * sstep(depth, 0.1, 0.2));
       } else mixed.lerp(filledColour, w);
       mixed.multiplyScalar(1 + (valueNoise(ix * 1.7, iz * 1.7) - 0.5) * 0.3 * w);
     }
@@ -267,16 +266,21 @@ export function createTerrain(): Terrain {
     let bermWeight = 0;
     for (let iz = iz0; iz <= iz1; iz += 1) {
       for (let ix = ix0; ix <= ix1; ix += 1) {
-        const d = Math.hypot(-MESH_HALF + ix * cell - x, -MESH_HALF + iz * cell - z) / radius;
+        const wx = -MESH_HALF + ix * cell;
+        const wz = -MESH_HALF + iz * cell;
+        // The edge wobbles a little, like it was dug by hand rather than stamped with a compass.
+        const wobble = 1 + (valueNoise(wx * 1.9 + 11, wz * 1.9 + 5) - 0.5) * 0.34;
+        const d = Math.hypot(wx - x, wz - z) / (radius * wobble);
         if (d >= 1.8) continue;
         const hi = ix * side + iz;
-        const pit = 1 - sstep(d, 0.4, 1);
+        const pit = (1 - sstep(d, 0, 1)) ** 1.25;
         if (kind === "fill") {
           heights[hi] = THREE.MathUtils.clamp(heights[hi]! + amount * pit, BEDROCK, CEILING);
         } else if (pit > 0) {
           // The deeper the pit, the harder the ground: digging slows right down.
           const hardness = 1 - 0.7 * sstep(base[hi]! - heights[hi]!, 0.25, 1.1);
-          const next = Math.max(BEDROCK, heights[hi]! - amount * pit * hardness);
+          const lumpy = 0.8 + valueNoise(wx * 5 + 3, wz * 5 + 8) * 0.4;
+          const next = Math.max(BEDROCK, heights[hi]! - amount * pit * hardness * lumpy);
           removed += heights[hi]! - next;
           heights[hi] = next;
         } else bermWeight += Math.exp(-(((d - 1.2) / 0.25) ** 2));
@@ -287,7 +291,9 @@ export function createTerrain(): Terrain {
       const share = (removed * 0.7) / bermWeight;
       for (let iz = iz0; iz <= iz1; iz += 1) {
         for (let ix = ix0; ix <= ix1; ix += 1) {
-          const d = Math.hypot(-MESH_HALF + ix * cell - x, -MESH_HALF + iz * cell - z) / radius;
+          const wx = -MESH_HALF + ix * cell;
+          const wz = -MESH_HALF + iz * cell;
+          const d = Math.hypot(wx - x, wz - z) / (radius * (1 + (valueNoise(wx * 1.9 + 11, wz * 1.9 + 5) - 0.5) * 0.34));
           if (d < 1 || d >= 1.8) continue;
           const hi = ix * side + iz;
           heights[hi] = Math.min(CEILING, heights[hi]! + share * Math.exp(-(((d - 1.2) / 0.25) ** 2)));

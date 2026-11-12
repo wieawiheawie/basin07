@@ -27,7 +27,6 @@ export function createDigTool(opts: {
   grass: Grass;
   onChange?: (tool: Tool) => void;
   onBrush?: (radius: number) => void;
-  onScoop?: (kind: "dig" | "fill", radius: number, depth: number) => void;
 }): DigTool {
   const { canvas, camera, scene, terrain, physics, grass } = opts;
   let tool: Tool = "move";
@@ -53,14 +52,14 @@ export function createDigTool(opts: {
   ringGeometry.setIndex(ringIndex);
   const ring = new THREE.Mesh(
     ringGeometry,
-    new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide })
+    new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.6, depthTest: false, side: THREE.DoubleSide })
   );
   ring.frustumCulled = false;
   ring.renderOrder = 10;
   ring.visible = false;
   scene.add(ring);
   function placeRing(cx: number, cz: number, r: number, pulse: number): void {
-    const inner = r * (0.94 - pulse * 0.02);
+    const inner = r * (0.975 - pulse * 0.01);
     for (let i = 0; i < SEG; i += 1) {
       const a = (i / SEG) * Math.PI * 2;
       const c = Math.cos(a);
@@ -80,7 +79,7 @@ export function createDigTool(opts: {
 
   // Flying soil while editing.
   const MAX_SOIL = 220;
-  const soil = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), new THREE.MeshStandardMaterial({ roughness: 1 }), MAX_SOIL);
+  const soil = new THREE.InstancedMesh(new THREE.BoxGeometry(0.045, 0.045, 0.045), new THREE.MeshStandardMaterial({ roughness: 1 }), MAX_SOIL);
   soil.frustumCulled = false;
   soil.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(soil);
@@ -99,7 +98,7 @@ export function createDigTool(opts: {
       const out = 0.3 + Math.random() * 1.1;
       if (kind === "dig") {
         soilPos.set([x + Math.cos(a) * rad, y + 0.05, z + Math.sin(a) * rad], i * 3);
-        soilVel.set([Math.cos(a) * out, 2 + Math.random() * 2.6, Math.sin(a) * out], i * 3);
+        soilVel.set([Math.cos(a) * out * 0.7, 1.2 + Math.random() * 1.6, Math.sin(a) * out * 0.7], i * 3);
         soilLife[i] = 0.8 + Math.random() * 0.5;
       } else {
         // Fill: soil is tipped in from above.
@@ -152,10 +151,8 @@ export function createDigTool(opts: {
     applyWhole();
   }
 
-  const SCOOP = 0.14;
-  const CYCLE = 0.19;
-  let scoopClock = 0;
-  let scoopIndex = -1;
+  let lastHit: THREE.Vector3 | null = null;
+  let emitCarry = 0;
   let inverted = false;
   let ringKind: Tool = "move";
 
@@ -264,10 +261,7 @@ export function createDigTool(opts: {
       pendingChange = false;
       const digging = active || keyDig;
       const kind = effective();
-      if (!digging) {
-        scoopClock = 0;
-        scoopIndex = -1;
-      }
+      if (!digging) lastHit = null;
       if (kind !== "move") {
         if (kind !== ringKind) {
           ringKind = kind;
@@ -283,30 +277,31 @@ export function createDigTool(opts: {
         if (hit) {
           placeRing(hit.x, hit.z, brushState.radius, digging ? 1 : 0);
           if (digging) {
-            // Digging works in scoops: a quick bite, a short pause, a puff of soil and a thud.
-            if (scoopIndex === -1) {
+            if (!lastHit) {
               history.push(terrain.snapshot());
               if (history.length > 24) history.shift();
             }
-            scoopClock += dt;
-            const index = Math.floor(scoopClock / CYCLE);
-            const phase = scoopClock - index * CYCLE;
-            if (index !== scoopIndex) {
-              scoopIndex = index;
-              emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, kind, Math.round(8 + brushState.radius * 7));
-              opts.onScoop?.(kind, brushState.radius, -terrain.delta(hit.x, hit.z));
-            }
-            if (phase < SCOOP) {
-              const pulse = Math.sin((Math.PI * phase) / SCOOP) * (Math.PI / 2) * (CYCLE / SCOOP);
-              const r = terrain.brush(kind, hit.x, hit.z, brushState.radius, brushState.strength * Math.min(dt, 0.05) * pulse);
+            // Stamp along the path since last frame so a fast drag cuts a smooth trench, not a row of dots.
+            // The same amount of digging is spread over the stamps, so moving quickly cuts shallower than lingering.
+            const from = lastHit ?? hit;
+            const n = Math.min(6, Math.max(1, Math.ceil(Math.hypot(hit.x - from.x, hit.z - from.z) / (brushState.radius * 0.3))));
+            const amount = (brushState.strength * Math.min(dt, 0.05)) / n;
+            for (let i = 1; i <= n; i += 1) {
+              const f = i / n;
+              const r = terrain.brush(kind, from.x + (hit.x - from.x) * f, from.z + (hit.z - from.z) * f, brushState.radius, amount);
               dirty.x0 = Math.min(dirty.x0, r.x0);
               dirty.x1 = Math.max(dirty.x1, r.x1);
               dirty.z0 = Math.min(dirty.z0, r.z0);
               dirty.z1 = Math.max(dirty.z1, r.z1);
-              hasDirty = true;
-              physicsStale = true;
-              changed = true;
             }
+            hasDirty = true;
+            physicsStale = true;
+            changed = true;
+            lastHit = hit;
+            emitCarry += dt * 26 * Math.min(2, brushState.radius);
+            const count = Math.floor(emitCarry);
+            emitCarry -= count;
+            emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, kind, count);
           }
         }
       }

@@ -12,7 +12,6 @@ export interface UiHandlers {
   resetView(): void;
   undo(): void;
   resetGround(): void;
-  setSound(on: boolean): void;
   /** Press or release a virtual keyboard key (drives the on-screen camera pad). */
   press(code: string, down: boolean): void;
 }
@@ -91,7 +90,6 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
       </div>
       <div class="row"><span>Time of day</span><button class="wide" id="u-night" aria-pressed="false">Day</button></div>
       <div class="row"><span>Camera</span><button class="wide" id="u-reset">Reset view</button></div>
-      <div class="row"><span>Sound</span><button class="wide" id="u-sound" aria-pressed="true">On</button></div>
       <div class="row"><span>Ground</span><button class="wide" id="u-ground">Reset ground</button></div>
       <div class="row"><span>Stats</span><button class="wide" id="u-stats">Show / hide</button></div>
       <button class="close" data-close aria-label="Close">Close</button>
@@ -221,29 +219,6 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
   $("u-stats").addEventListener("click", () => handlers.toggleStats());
   $("u-undo").addEventListener("click", () => handlers.undo());
   $("u-ground").addEventListener("click", () => handlers.resetGround());
-  const soundButton = $("u-sound");
-  let soundOn = true;
-  try {
-    soundOn = localStorage.getItem("deskbound.sound") !== "0";
-  } catch {
-    /* storage unavailable */
-  }
-  const showSound = (): void => {
-    soundButton.textContent = soundOn ? "On" : "Off";
-    soundButton.setAttribute("aria-pressed", String(soundOn));
-  };
-  showSound();
-  handlers.setSound(soundOn);
-  soundButton.addEventListener("click", () => {
-    soundOn = !soundOn;
-    showSound();
-    handlers.setSound(soundOn);
-    try {
-      localStorage.setItem("deskbound.sound", soundOn ? "1" : "0");
-    } catch {
-      /* storage unavailable */
-    }
-  });
 
   let toastTimer = 0;
   const toastEl = $("u-toast");
