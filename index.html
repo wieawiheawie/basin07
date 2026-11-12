@@ -2,15 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d2328" />
     <title>Deskbound</title>
   </head>
   <body>
-    <div id="tools"><button data-tool="move" class="on">Move</button><button data-tool="dig" >Dig</button><button data-tool="fill">Fill</button></div>
-    <canvas id="view"></canvas>
+    <canvas id="view" aria-label="Miniature meadow"></canvas>
     <div class="vignette" aria-hidden="true"></div>
     <div id="loading" class="loading">Loading…</div>
-    <div class="hint">1 move · 2 dig · 3 fill · [ ] brush · Space orbit · Drag the crate · drag the ground to orbit · WASD or right-drag to move · Q/E rotate · scroll or pinch to zoom · V reset · N day/night · G quality · F3 stats</div>
+    <noscript>Deskbound needs JavaScript and WebGL.</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -11,6 +11,7 @@ import { createProps, syncProps } from "./props";
 import { PRESET_ORDER, presets, type PresetName } from "./quality";
 import { createTable } from "./table";
 import { createTerrain, HALF } from "./terrain";
+import { createUi, type Ui } from "./ui";
 
 const params = new URLSearchParams(location.search);
 const MAX_BLADES = 440000;
@@ -63,12 +64,12 @@ async function start(): Promise<void> {
   const props = createProps(scene, physics, Number(params.get("props") ?? 1));
   let dig: ReturnType<typeof createDigTool> | null = null;
   setupGrab({ canvas, camera, physics, props, limit: LIMIT, enabled: () => (dig?.tool() ?? "move") === "move" });
-  const toolbar = document.getElementById("tools");
+  let ui: Ui | null = null;
   dig = createDigTool({
     canvas, camera, scene, terrain, physics, grass,
-    onChange: (tool) => toolbar?.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tool === tool))
+    onChange: (tool) => ui?.setTool(tool),
+    onBrush: (radius) => ui?.setRadius(radius)
   });
-  toolbar?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => dig?.setTool(b.dataset.tool as "move" | "dig" | "fill")));
   loading?.remove();
 
   function resize(): void {
@@ -101,13 +102,40 @@ async function start(): Promise<void> {
   applyPreset(preset.name);
 
   const perf = createPerfOverlay(renderer, () => `preset ${preset.name}  blades ${(grass.drawn() / 1000).toFixed(0)}k  quality ${grass.quality().toFixed(2)}  pixel ratio ${renderer.getPixelRatio().toFixed(2)}`);
+  const toggleNight = (): void => {
+    atmosphere.toggle();
+    ui?.setNight(atmosphere.isNight());
+    ui?.toast(atmosphere.isNight() ? "Night" : "Day");
+  };
+  const choosePreset = (name: PresetName): void => {
+    applyPreset(name);
+    ui?.setPreset(name);
+    ui?.toast(`Quality: ${name}`);
+  };
+  ui = createUi(
+    {
+      setTool: (tool) => dig?.setTool(tool),
+      setRadius: (v) => {
+        if (dig) dig.brush.radius = v;
+      },
+      setStrength: (v) => {
+        if (dig) dig.brush.strength = v;
+      },
+      setPreset: choosePreset,
+      toggleNight,
+      toggleStats: () => perf.toggle(),
+      resetView: () => rig.reset(),
+      press: (code, down) => rig.press(code, down)
+    },
+    { tool: "move", radius: dig.brush.radius, strength: dig.brush.strength, preset: preset.name }
+  );
   window.addEventListener("keydown", (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.code === "KeyN") atmosphere.toggle();
+    if (event.ctrlKey || event.metaKey || event.altKey || event.target instanceof HTMLInputElement) return;
+    if (event.code === "KeyN") toggleNight();
     else if (event.code === "F3" || event.code === "KeyP") {
       event.preventDefault();
       perf.toggle();
-    } else if (event.code === "KeyG") applyPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset.name) + 1) % PRESET_ORDER.length]!);
+    } else if (event.code === "KeyG") choosePreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset.name) + 1) % PRESET_ORDER.length]!);
   });
 
   // Debug and test hooks.

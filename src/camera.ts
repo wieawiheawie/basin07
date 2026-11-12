@@ -5,6 +5,8 @@ export interface CameraRig {
   controls: OrbitControls;
   update(dt: number): void;
   reset(): void;
+  /** Press or release a virtual key (used by the on-screen camera pad). */
+  press(code: string, down: boolean): void;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -32,7 +34,7 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
 
   const keys = new Set<string>();
   window.addEventListener("keydown", (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.target instanceof HTMLInputElement) return;
     if (event.code === "KeyV" || event.code === "Home") {
       reset();
       return;
@@ -64,6 +66,10 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
   return {
     controls,
     reset,
+    press(code: string, down: boolean): void {
+      if (down) keys.add(code);
+      else keys.delete(code);
+    },
     update(rawDt: number): void {
       const dt = Math.min(rawDt, 0.1);
       offset.copy(camera.position).sub(controls.target);
