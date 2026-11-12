@@ -50,7 +50,7 @@ export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camer
       const local = found.prop.object.worldToLocal(found.point.clone()).multiplyScalar(found.prop.body.size);
       physics.beginGrab(found.prop.body, local);
       updateTarget();
-      canvas.style.cursor = "grabbing";
+      canvas.style.cursor = "url(/ui/grab.svg) 16 16, grabbing";
     },
     { capture: true }
   );
@@ -58,13 +58,13 @@ export function setupGrab(opts: { canvas: HTMLCanvasElement; camera: THREE.Camer
   canvas.addEventListener("pointermove", (event) => {
     aim(event);
     if (physics.isGrabbed()) updateTarget();
-    else if (active()) canvas.style.cursor = propAt() ? "grab" : "default";
+    else if (active()) canvas.classList.toggle("grab", propAt() !== null);
   });
 
   const release = (): void => {
     if (!physics.isGrabbed()) return;
     physics.endGrab();
-    canvas.style.cursor = "default";
+    canvas.style.cursor = "";
   };
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);

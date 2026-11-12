@@ -48,7 +48,8 @@ export function createDigTool(opts: {
     active = false;
     ring.visible = false;
     (ring.material as THREE.MeshBasicMaterial).color.set(colours[next]);
-    canvas.style.cursor = next === "move" ? "default" : "none";
+    canvas.classList.toggle("dig", next === "dig");
+    canvas.classList.toggle("fill", next === "fill");
     opts.onChange?.(next);
   }
 

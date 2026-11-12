@@ -9,3 +9,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2328; fon
 #tools{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:6px;z-index:5}
 #tools button{background:#1d2418cc;color:#e8eedc;border:1px solid #ffffff30;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
 #tools button.on{background:#e8eedc;color:#1d2418}
+
+/* Cursors: swap the files in public/ui/ (e.g. Kenney PNGs) to restyle. */
+canvas{cursor:url(/ui/pointer.svg) 6 3,default}
+canvas.grab{cursor:url(/ui/grab.svg) 16 16,grab}
+canvas.dig{cursor:url(/ui/dig.svg) 16 16,crosshair}
+canvas.fill{cursor:url(/ui/fill.svg) 16 16,crosshair}
