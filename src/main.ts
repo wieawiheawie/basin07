@@ -186,8 +186,8 @@ async function start(): Promise<void> {
             renderer.setPixelRatio(0.7);
             resize();
           }
-        } else if (!slowSeen && avg < 1 / 58 && grass.quality() < 1) {
-          grass.setQuality(grass.quality() * 1.2);
+        } else if (!slowSeen && avg < 1 / 58 && grass.quality() < preset.grass) {
+          grass.setQuality(Math.min(preset.grass, grass.quality() * 1.2));
         }
         frames = 0;
         accum = 0;
