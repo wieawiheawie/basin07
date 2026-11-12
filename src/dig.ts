@@ -110,11 +110,16 @@ export function createDigTool(opts: {
       soil.setColorAt(i, soilColour);
     }
     if (soil.instanceColor) soil.instanceColor.needsUpdate = true;
+    soilAlive = 1;
   }
+  let soilAlive = 0;
   function stepSoil(dt: number): void {
+    if (soilAlive === 0) return;
+    soilAlive = 0;
     for (let i = 0; i < MAX_SOIL; i += 1) {
       if (soilLife[i]! > 0) {
         soilLife[i] = soilLife[i]! - dt;
+        soilAlive += 1;
         soilVel[i * 3 + 1] = soilVel[i * 3 + 1]! - 9 * dt;
         for (let k = 0; k < 3; k += 1) soilPos[i * 3 + k] = soilPos[i * 3 + k]! + soilVel[i * 3 + k]! * dt;
         if (soilPos[i * 3 + 1]! < terrain.sample(soilPos[i * 3]!, soilPos[i * 3 + 2]!)) soilLife[i] = 0;
@@ -286,14 +291,11 @@ export function createDigTool(opts: {
             const from = lastHit ?? hit;
             const n = Math.min(6, Math.max(1, Math.ceil(Math.hypot(hit.x - from.x, hit.z - from.z) / (brushState.radius * 0.3))));
             const amount = (brushState.strength * Math.min(dt, 0.05)) / n;
-            for (let i = 1; i <= n; i += 1) {
-              const f = i / n;
-              const r = terrain.brush(kind, from.x + (hit.x - from.x) * f, from.z + (hit.z - from.z) * f, brushState.radius, amount);
-              dirty.x0 = Math.min(dirty.x0, r.x0);
-              dirty.x1 = Math.max(dirty.x1, r.x1);
-              dirty.z0 = Math.min(dirty.z0, r.z0);
-              dirty.z1 = Math.max(dirty.z1, r.z1);
-            }
+            const r = terrain.stroke(kind, from.x, from.z, hit.x, hit.z, n, brushState.radius, amount);
+            dirty.x0 = Math.min(dirty.x0, r.x0);
+            dirty.x1 = Math.max(dirty.x1, r.x1);
+            dirty.z0 = Math.min(dirty.z0, r.z0);
+            dirty.z1 = Math.max(dirty.z1, r.z1);
             hasDirty = true;
             physicsStale = true;
             changed = true;

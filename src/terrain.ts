@@ -61,6 +61,8 @@ export function lushness(x: number, z: number): number {
 
 export type BrushKind = "dig" | "fill";
 
+interface GridRect { ix0: number; ix1: number; iz0: number; iz1: number }
+
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 
 /** Lowest the ground can be dug: just above the wooden tabletop. */
@@ -80,6 +82,8 @@ export interface Terrain {
   delta(x: number, z: number): number;
   /** Dig or fill with a round brush. Returns the world-space area that changed. */
   brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect;
+  /** Like `brush`, but stamps along a straight line and refreshes the mesh once. */
+  stroke(kind: BrushKind, x0: number, z0: number, x1: number, z1: number, count: number, radius: number, amount: number): Rect;
   /** Copy of the current heights, for undo. */
   snapshot(): Float32Array;
   /** Put heights back from a snapshot. Returns the area that changed (all of it). */
@@ -228,21 +232,25 @@ export function createTerrain(): Terrain {
   /** Let over-steep soil slump downhill (volume is kept), so pit walls and heaps settle naturally. */
   function relax(ix0: number, ix1: number, iz0: number, iz1: number): void {
     const limit = cell * MAX_SLOPE;
+    const share = (a: number, b: number): boolean => {
+      const diff = heights[a]! - heights[b]!;
+      const excess = Math.abs(diff) - limit;
+      if (excess <= 0) return false;
+      const move = excess * 0.25 * Math.sign(diff);
+      heights[a] = THREE.MathUtils.clamp(heights[a]! - move, BEDROCK, CEILING);
+      heights[b] = THREE.MathUtils.clamp(heights[b]! + move, BEDROCK, CEILING);
+      return true;
+    };
     for (let pass = 0; pass < 4; pass += 1) {
+      let moved = false;
       for (let iz = iz0; iz <= iz1; iz += 1) {
         for (let ix = ix0; ix <= ix1; ix += 1) {
           const a = ix * side + iz;
-          for (const b of [ix < SEGMENTS ? a + side : -1, iz < SEGMENTS ? a + 1 : -1]) {
-            if (b < 0) continue;
-            const diff = heights[a]! - heights[b]!;
-            const excess = Math.abs(diff) - limit;
-            if (excess <= 0) continue;
-            const move = excess * 0.25 * Math.sign(diff);
-            heights[a] = THREE.MathUtils.clamp(heights[a]! - move, BEDROCK, CEILING);
-            heights[b] = THREE.MathUtils.clamp(heights[b]! + move, BEDROCK, CEILING);
-          }
+          if (ix < SEGMENTS && share(a, a + side)) moved = true;
+          if (iz < SEGMENTS && share(a, a + 1)) moved = true;
         }
       }
+      if (!moved) break;
     }
   }
 
@@ -256,7 +264,8 @@ export function createTerrain(): Terrain {
     colourAttribute.needsUpdate = true;
   }
 
-  function brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect {
+  /** Change the heights for one round stamp. Returns the grid rectangle it touched. */
+  function stamp(kind: BrushKind, x: number, z: number, radius: number, amount: number): GridRect {
     const reach = radius * 1.8;
     const ix0 = Math.max(0, Math.floor((x - reach + MESH_HALF) / cell));
     const ix1 = Math.min(SEGMENTS, Math.ceil((x + reach + MESH_HALF) / cell));
@@ -300,11 +309,31 @@ export function createTerrain(): Terrain {
         }
       }
     }
+    return { ix0, ix1, iz0, iz1 };
+  }
+
+  /** Settle steep soil and refresh the mesh over a grid rectangle. */
+  function finish(g: GridRect): Rect {
     const pad = 3;
-    const r = { ix0: Math.max(0, ix0 - pad), ix1: Math.min(SEGMENTS, ix1 + pad), iz0: Math.max(0, iz0 - pad), iz1: Math.min(SEGMENTS, iz1 + pad) };
+    const r = { ix0: Math.max(0, g.ix0 - pad), ix1: Math.min(SEGMENTS, g.ix1 + pad), iz0: Math.max(0, g.iz0 - pad), iz1: Math.min(SEGMENTS, g.iz1 + pad) };
     relax(r.ix0, r.ix1, r.iz0, r.iz1);
     sync(r.ix0, r.ix1, r.iz0, r.iz1);
     return { x0: -MESH_HALF + r.ix0 * cell, x1: -MESH_HALF + r.ix1 * cell, z0: -MESH_HALF + r.iz0 * cell, z1: -MESH_HALF + r.iz1 * cell };
+  }
+
+  function brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect {
+    return finish(stamp(kind, x, z, radius, amount));
+  }
+
+  /** Several stamps along a line, with one mesh refresh at the end. */
+  function stroke(kind: BrushKind, x0: number, z0: number, x1: number, z1: number, count: number, radius: number, amount: number): Rect {
+    let u: GridRect | null = null;
+    for (let i = 1; i <= count; i += 1) {
+      const f = i / count;
+      const g = stamp(kind, x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, radius, amount);
+      u = u ? { ix0: Math.min(u.ix0, g.ix0), ix1: Math.max(u.ix1, g.ix1), iz0: Math.min(u.iz0, g.iz0), iz1: Math.max(u.iz1, g.iz1) } : g;
+    }
+    return finish(u!);
   }
 
   const everything: Rect = { x0: -MESH_HALF, x1: MESH_HALF, z0: -MESH_HALF, z1: MESH_HALF };
@@ -352,6 +381,7 @@ export function createTerrain(): Terrain {
     sample: (x, z) => interpolate(heights, x, z),
     delta: (x, z) => interpolate(heights, x, z) - interpolate(base, x, z),
     brush,
+    stroke,
     snapshot: () => heights.slice(),
     restore,
     reset: () => restore(base),
