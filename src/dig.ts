@@ -9,6 +9,11 @@ export interface DigTool {
   tool(): Tool;
   brush: { radius: number; strength: number };
   setTool(tool: Tool): void;
+  /** Undo the last dig or fill stroke. */
+  undo(): void;
+  /** Put the ground back the way it was generated (can be undone). */
+  resetGround(): void;
+  sound: { enabled: boolean };
   /** Call every frame. Returns true when the ground changed this frame. */
   update(dt: number): boolean;
 }
@@ -90,11 +95,18 @@ export function createDigTool(opts: {
       const i = soilNext;
       soilNext = (soilNext + 1) % MAX_SOIL;
       const a = Math.random() * Math.PI * 2;
-      const rad = Math.random() * r * 0.8;
-      soilPos.set([x + Math.cos(a) * rad, y + 0.05, z + Math.sin(a) * rad], i * 3);
-      const out = 0.4 + Math.random() * 1.2;
-      soilVel.set([Math.cos(a) * out, 1.5 + Math.random() * 2.2, Math.sin(a) * out], i * 3);
-      soilLife[i] = 0.7 + Math.random() * 0.5;
+      const rad = Math.random() * r * 0.7;
+      const out = 0.3 + Math.random() * 1.1;
+      if (kind === "dig") {
+        soilPos.set([x + Math.cos(a) * rad, y + 0.05, z + Math.sin(a) * rad], i * 3);
+        soilVel.set([Math.cos(a) * out, 2 + Math.random() * 2.6, Math.sin(a) * out], i * 3);
+        soilLife[i] = 0.8 + Math.random() * 0.5;
+      } else {
+        // Fill: soil is tipped in from above.
+        soilPos.set([x + Math.cos(a) * rad, y + 1.1 + Math.random() * 0.4, z + Math.sin(a) * rad], i * 3);
+        soilVel.set([Math.cos(a) * out * 0.3, -0.5 - Math.random(), Math.sin(a) * out * 0.3], i * 3);
+        soilLife[i] = 1.6;
+      }
       soilColour.set(kind === "dig" ? "#4a3322" : "#7a5e3c").multiplyScalar(0.75 + Math.random() * 0.5);
       soil.setColorAt(i, soilColour);
     }
@@ -119,15 +131,79 @@ export function createDigTool(opts: {
     }
     soil.instanceMatrix.needsUpdate = true;
   }
-  let emitCarry = 0;
+
+  // A soft, low thud for each scoop, made from filtered noise (no audio files needed).
+  const sound = { enabled: true };
+  let audio: AudioContext | null = null;
+  let noise: AudioBuffer | null = null;
+  function thud(kind: Tool, size: number): void {
+    if (!sound.enabled) return;
+    try {
+      audio ??= new AudioContext();
+      if (audio.state === "suspended") void audio.resume();
+      if (!noise) {
+        noise = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.25), audio.sampleRate);
+        const data = noise.getChannelData(0);
+        let last = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          last = (last + 0.04 * (Math.random() * 2 - 1)) / 1.04;
+          data[i] = last * 8;
+        }
+      }
+      const source = audio.createBufferSource();
+      source.buffer = noise;
+      const filter = audio.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = (kind === "dig" ? 240 : 520) + Math.random() * 140;
+      const gain = audio.createGain();
+      const t = audio.currentTime;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.28 + size * 0.06, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      source.connect(filter).connect(gain).connect(audio.destination);
+      source.start(t);
+    } catch {
+      /* audio unavailable */
+    }
+  }
+
+  const history: Float32Array[] = [];
+  const everything = { x0: -100, x1: 100, z0: -100, z1: 100 };
+  let pendingChange = false;
+  function applyWhole(): void {
+    physics.updateTerrain();
+    grass.rebuildRegion(everything, terrain.sample, terrain.delta);
+    pendingChange = true;
+  }
+  function undo(): void {
+    const previous = history.pop();
+    if (!previous) return;
+    terrain.restore(previous);
+    applyWhole();
+  }
+  function resetGround(): void {
+    history.push(terrain.snapshot());
+    terrain.reset();
+    applyWhole();
+  }
+
+  const SCOOP = 0.14;
+  const CYCLE = 0.19;
+  let scoopClock = 0;
+  let scoopIndex = -1;
+  let inverted = false;
+  let ringKind: Tool = "move";
 
   const colours: Record<Tool, string> = { move: "#ffffff", dig: "#ffb066", fill: "#9be37e" };
+
+  /** Hold Alt to flip between digging and filling. */
+  const effective = (): Tool => (tool === "move" ? "move" : inverted ? (tool === "dig" ? "fill" : "dig") : tool);
 
   function setTool(next: Tool): void {
     tool = next;
     active = false;
     ring.visible = false;
-    (ring.material as THREE.MeshBasicMaterial).color.set(colours[next]);
+    ringKind = "move";
     if (next === "dig" || next === "fill") soil.visible = true;
     canvas.classList.toggle("dig", next === "dig");
     canvas.classList.toggle("fill", next === "fill");
@@ -156,6 +232,7 @@ export function createDigTool(opts: {
       event.stopImmediatePropagation();
       canvas.setPointerCapture(event.pointerId);
       lastType = event.pointerType;
+      inverted = event.altKey;
       activeId = event.pointerId;
       aim(event);
       active = true;
@@ -178,6 +255,12 @@ export function createDigTool(opts: {
   });
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Alt") inverted = true;
+    if ((event.ctrlKey || event.metaKey) && event.code === "KeyZ" && !(event.target instanceof HTMLInputElement)) {
+      event.preventDefault();
+      undo();
+      return;
+    }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target as HTMLElement;
     if (target instanceof HTMLInputElement) return;
@@ -190,26 +273,42 @@ export function createDigTool(opts: {
     } else if (event.code === "Digit1") setTool("move");
     else if (event.code === "Digit2") setTool(tool === "dig" ? "move" : "dig");
     else if (event.code === "Digit3") setTool(tool === "fill" ? "move" : "fill");
+    else if (event.code === "KeyT") setTool(tool === "move" ? "dig" : tool === "dig" ? "fill" : "move");
     else if (event.code === "BracketLeft" || event.code === "BracketRight") {
       brushState.radius = Math.min(4, Math.max(0.5, brushState.radius + (event.code === "BracketLeft" ? -0.25 : 0.25)));
       opts.onBrush?.(brushState.radius);
     }
   });
   window.addEventListener("keyup", (event) => {
+    if (event.key === "Alt") inverted = false;
     if (event.code === "Space" || event.code === "Enter") keyDig = false;
   });
   window.addEventListener("blur", () => {
     keyDig = false;
+    inverted = false;
   });
 
   return {
     tool: () => tool,
     brush: brushState,
     setTool,
+    undo,
+    resetGround,
+    sound,
     update(dt: number): boolean {
-      let changed = false;
+      let changed = pendingChange;
+      pendingChange = false;
       const digging = active || keyDig;
-      if (tool !== "move") {
+      const kind = effective();
+      if (!digging) {
+        scoopClock = 0;
+        scoopIndex = -1;
+      }
+      if (kind !== "move") {
+        if (kind !== ringKind) {
+          ringKind = kind;
+          (ring.material as THREE.MeshBasicMaterial).color.set(colours[kind]);
+        }
         const rect = canvas.getBoundingClientRect();
         // With no pointer yet (keyboard only) aim at the middle of the view.
         const at = pointer ?? { x: rect.width / 2, y: rect.height / 2 };
@@ -220,18 +319,30 @@ export function createDigTool(opts: {
         if (hit) {
           placeRing(hit.x, hit.z, brushState.radius, digging ? 1 : 0);
           if (digging) {
-            const r = terrain.brush(tool, hit.x, hit.z, brushState.radius, brushState.strength * Math.min(dt, 0.05));
-            dirty.x0 = Math.min(dirty.x0, r.x0);
-            dirty.x1 = Math.max(dirty.x1, r.x1);
-            dirty.z0 = Math.min(dirty.z0, r.z0);
-            dirty.z1 = Math.max(dirty.z1, r.z1);
-            hasDirty = true;
-            physicsStale = true;
-            changed = true;
-            emitCarry += dt * 70 * Math.min(2, brushState.radius);
-            const n = Math.floor(emitCarry);
-            emitCarry -= n;
-            emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, tool, n);
+            // Digging works in scoops: a quick bite, a short pause, a puff of soil and a thud.
+            if (scoopIndex === -1) {
+              history.push(terrain.snapshot());
+              if (history.length > 24) history.shift();
+            }
+            scoopClock += dt;
+            const index = Math.floor(scoopClock / CYCLE);
+            const phase = scoopClock - index * CYCLE;
+            if (index !== scoopIndex) {
+              scoopIndex = index;
+              emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, kind, Math.round(8 + brushState.radius * 7));
+              thud(kind, brushState.radius);
+            }
+            if (phase < SCOOP) {
+              const pulse = Math.sin((Math.PI * phase) / SCOOP) * (Math.PI / 2) * (CYCLE / SCOOP);
+              const r = terrain.brush(kind, hit.x, hit.z, brushState.radius, brushState.strength * Math.min(dt, 0.05) * pulse);
+              dirty.x0 = Math.min(dirty.x0, r.x0);
+              dirty.x1 = Math.max(dirty.x1, r.x1);
+              dirty.z0 = Math.min(dirty.z0, r.z0);
+              dirty.z1 = Math.max(dirty.z1, r.z1);
+              hasDirty = true;
+              physicsStale = true;
+              changed = true;
+            }
           }
         }
       }

@@ -80,6 +80,12 @@ export interface Terrain {
   delta(x: number, z: number): number;
   /** Dig or fill with a round brush. Returns the world-space area that changed. */
   brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect;
+  /** Copy of the current heights, for undo. */
+  snapshot(): Float32Array;
+  /** Put heights back from a snapshot. Returns the area that changed (all of it). */
+  restore(heights: Float32Array): Rect;
+  /** Back to the original generated ground. */
+  reset(): Rect;
   /** First point where a ray meets the ground, or null. */
   raycast(ray: THREE.Ray, maxDistance?: number): THREE.Vector3 | null;
 }
@@ -186,12 +192,15 @@ export function createTerrain(): Terrain {
   }
   updateNormals(0, SEGMENTS, 0, SEGMENTS);
 
-  const dugColour = new THREE.Color("#3d2c1c");
-  const deepColour = new THREE.Color("#241912");
+  // Soil layers, from the surface down: loam, subsoil, clay, stone. Pit walls show them as bands.
+  const loam = new THREE.Color("#3d2c1c");
+  const subsoil = new THREE.Color("#7a5230");
+  const clay = new THREE.Color("#8c7458");
+  const stone = new THREE.Color("#6d6c68");
   const filledColour = new THREE.Color("#6f5535");
   const mixed = new THREE.Color();
+  const sstep = THREE.MathUtils.smoothstep;
 
-  /** Disturbed ground becomes soil: dark and damp where dug (darker with depth), loose and tan where built up, with a little grain. */
   function paint(ix: number, iz: number): void {
     const hi = ix * side + iz;
     const i = iz * side + ix;
@@ -199,17 +208,53 @@ export function createTerrain(): Terrain {
     mixed.setRGB(baseColours[i * 3]!, baseColours[i * 3 + 1]!, baseColours[i * 3 + 2]!);
     const a = Math.abs(d);
     if (a > 0.004) {
-      const w = THREE.MathUtils.smoothstep(a, 0.004, 0.1);
+      const w = sstep(a, 0.004, 0.1);
       if (d < 0) {
-        mixed.lerp(dugColour, w);
-        mixed.lerp(deepColour, THREE.MathUtils.smoothstep(-d, 0.2, 0.9));
+        const depth = -d;
+        mixed.lerp(loam, w);
+        mixed.lerp(subsoil, sstep(depth, 0.12, 0.22));
+        mixed.lerp(clay, sstep(depth, 0.34, 0.44));
+        mixed.lerp(stone, sstep(depth, 0.62, 0.72));
+        mixed.multiplyScalar(1 + Math.sin(depth * 70) * 0.05 * sstep(depth, 0.1, 0.2));
       } else mixed.lerp(filledColour, w);
-      const grain = 1 + (valueNoise(ix * 1.7, iz * 1.7) - 0.5) * 0.3 * w;
-      mixed.multiplyScalar(grain);
+      mixed.multiplyScalar(1 + (valueNoise(ix * 1.7, iz * 1.7) - 0.5) * 0.3 * w);
     }
     colours[i * 3] = mixed.r;
     colours[i * 3 + 1] = mixed.g;
     colours[i * 3 + 2] = mixed.b;
+  }
+
+  const MAX_SLOPE = 1.15; // steepest the loose soil will stand, as rise over run
+
+  /** Let over-steep soil slump downhill (volume is kept), so pit walls and heaps settle naturally. */
+  function relax(ix0: number, ix1: number, iz0: number, iz1: number): void {
+    const limit = cell * MAX_SLOPE;
+    for (let pass = 0; pass < 4; pass += 1) {
+      for (let iz = iz0; iz <= iz1; iz += 1) {
+        for (let ix = ix0; ix <= ix1; ix += 1) {
+          const a = ix * side + iz;
+          for (const b of [ix < SEGMENTS ? a + side : -1, iz < SEGMENTS ? a + 1 : -1]) {
+            if (b < 0) continue;
+            const diff = heights[a]! - heights[b]!;
+            const excess = Math.abs(diff) - limit;
+            if (excess <= 0) continue;
+            const move = excess * 0.25 * Math.sign(diff);
+            heights[a] = THREE.MathUtils.clamp(heights[a]! - move, BEDROCK, CEILING);
+            heights[b] = THREE.MathUtils.clamp(heights[b]! + move, BEDROCK, CEILING);
+          }
+        }
+      }
+    }
+  }
+
+  function sync(ix0: number, ix1: number, iz0: number, iz1: number): void {
+    for (let iz = iz0; iz <= iz1; iz += 1) {
+      for (let ix = ix0; ix <= ix1; ix += 1) positions[(iz * side + ix) * 3 + 1] = heights[ix * side + iz]!;
+    }
+    updateNormals(ix0 - 1, ix1 + 1, iz0 - 1, iz1 + 1);
+    for (let iz = iz0; iz <= iz1; iz += 1) for (let ix = ix0; ix <= ix1; ix += 1) paint(ix, iz);
+    positionAttribute.needsUpdate = true;
+    colourAttribute.needsUpdate = true;
   }
 
   function brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect {
@@ -218,26 +263,49 @@ export function createTerrain(): Terrain {
     const ix1 = Math.min(SEGMENTS, Math.ceil((x + reach + MESH_HALF) / cell));
     const iz0 = Math.max(0, Math.floor((z - reach + MESH_HALF) / cell));
     const iz1 = Math.min(SEGMENTS, Math.ceil((z + reach + MESH_HALF) / cell));
+    let removed = 0;
+    let bermWeight = 0;
     for (let iz = iz0; iz <= iz1; iz += 1) {
       for (let ix = ix0; ix <= ix1; ix += 1) {
         const d = Math.hypot(-MESH_HALF + ix * cell - x, -MESH_HALF + iz * cell - z) / radius;
         if (d >= 1.8) continue;
-        // A flat-bottomed pit with soft walls; digging also heaps a low rim of soil just outside it.
-        const pit = 1 - THREE.MathUtils.smoothstep(d, 0.4, 1);
-        const berm = Math.exp(-(((d - 1.2) / 0.22) ** 2));
-        const change = kind === "dig" ? -amount * pit + amount * 0.14 * berm : amount * pit;
-        if (Math.abs(change) < 1e-6) continue;
         const hi = ix * side + iz;
-        const h = THREE.MathUtils.clamp(heights[hi]! + change, BEDROCK, CEILING);
-        heights[hi] = h;
-        positions[(iz * side + ix) * 3 + 1] = h;
+        const pit = 1 - sstep(d, 0.4, 1);
+        if (kind === "fill") {
+          heights[hi] = THREE.MathUtils.clamp(heights[hi]! + amount * pit, BEDROCK, CEILING);
+        } else if (pit > 0) {
+          // The deeper the pit, the harder the ground: digging slows right down.
+          const hardness = 1 - 0.7 * sstep(base[hi]! - heights[hi]!, 0.25, 1.1);
+          const next = Math.max(BEDROCK, heights[hi]! - amount * pit * hardness);
+          removed += heights[hi]! - next;
+          heights[hi] = next;
+        } else bermWeight += Math.exp(-(((d - 1.2) / 0.25) ** 2));
       }
     }
-    updateNormals(ix0 - 1, ix1 + 1, iz0 - 1, iz1 + 1);
-    for (let iz = iz0; iz <= iz1; iz += 1) for (let ix = ix0; ix <= ix1; ix += 1) paint(ix, iz);
-    positionAttribute.needsUpdate = true;
-    colourAttribute.needsUpdate = true;
-    return { x0: x - reach, x1: x + reach, z0: z - reach, z1: z + reach };
+    if (kind === "dig" && removed > 0 && bermWeight > 0) {
+      // Most of the soil you remove is heaped around the edge of the hole.
+      const share = (removed * 0.7) / bermWeight;
+      for (let iz = iz0; iz <= iz1; iz += 1) {
+        for (let ix = ix0; ix <= ix1; ix += 1) {
+          const d = Math.hypot(-MESH_HALF + ix * cell - x, -MESH_HALF + iz * cell - z) / radius;
+          if (d < 1 || d >= 1.8) continue;
+          const hi = ix * side + iz;
+          heights[hi] = Math.min(CEILING, heights[hi]! + share * Math.exp(-(((d - 1.2) / 0.25) ** 2)));
+        }
+      }
+    }
+    const pad = 3;
+    const r = { ix0: Math.max(0, ix0 - pad), ix1: Math.min(SEGMENTS, ix1 + pad), iz0: Math.max(0, iz0 - pad), iz1: Math.min(SEGMENTS, iz1 + pad) };
+    relax(r.ix0, r.ix1, r.iz0, r.iz1);
+    sync(r.ix0, r.ix1, r.iz0, r.iz1);
+    return { x0: -MESH_HALF + r.ix0 * cell, x1: -MESH_HALF + r.ix1 * cell, z0: -MESH_HALF + r.iz0 * cell, z1: -MESH_HALF + r.iz1 * cell };
+  }
+
+  const everything: Rect = { x0: -MESH_HALF, x1: MESH_HALF, z0: -MESH_HALF, z1: MESH_HALF };
+  function restore(source: Float32Array): Rect {
+    heights.set(source);
+    sync(0, SEGMENTS, 0, SEGMENTS);
+    return everything;
   }
 
   const hit = new THREE.Vector3();
@@ -278,6 +346,9 @@ export function createTerrain(): Terrain {
     sample: (x, z) => interpolate(heights, x, z),
     delta: (x, z) => interpolate(heights, x, z) - interpolate(base, x, z),
     brush,
+    snapshot: () => heights.slice(),
+    restore,
+    reset: () => restore(base),
     raycast
   };
 }

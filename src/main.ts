@@ -125,6 +125,11 @@ async function start(): Promise<void> {
       toggleNight,
       toggleStats: () => perf.toggle(),
       resetView: () => rig.reset(),
+      undo: () => dig?.undo(),
+      resetGround: () => dig?.resetGround(),
+      setSound: (on) => {
+        if (dig) dig.sound.enabled = on;
+      },
       press: (code, down) => rig.press(code, down)
     },
     { tool: "move", radius: dig.brush.radius, strength: dig.brush.strength, preset: preset.name }
@@ -136,6 +141,26 @@ async function start(): Promise<void> {
       event.preventDefault();
       perf.toggle();
     } else if (event.code === "KeyG") choosePreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset.name) + 1) % PRESET_ORDER.length]!);
+  });
+
+  // Double-click or double-tap the ground (in Move) to glide the camera there.
+  const aimRay = new THREE.Raycaster();
+  let lastTap = { t: 0, x: 0, y: 0 };
+  let downAt = { t: 0, x: 0, y: 0 };
+  canvas.addEventListener("pointerdown", (event) => {
+    downAt = { t: performance.now(), x: event.clientX, y: event.clientY };
+  });
+  canvas.addEventListener("pointerup", (event) => {
+    if (dig?.tool() !== "move" || physics.isGrabbed()) return;
+    const now = performance.now();
+    if (now - downAt.t > 300 || Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 10) return;
+    if (now - lastTap.t < 350 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 30) {
+      const box = canvas.getBoundingClientRect();
+      aimRay.setFromCamera(new THREE.Vector2(((event.clientX - box.left) / box.width) * 2 - 1, -((event.clientY - box.top) / box.height) * 2 + 1), camera);
+      const point = terrain.raycast(aimRay.ray);
+      if (point) rig.focus(point);
+      lastTap = { t: 0, x: 0, y: 0 };
+    } else lastTap = { t: now, x: event.clientX, y: event.clientY };
   });
 
   // Debug and test hooks.
@@ -154,6 +179,7 @@ async function start(): Promise<void> {
       grass.rebuildRegion(rect, terrain.sample, terrain.delta);
       sun.shadow.needsUpdate = true;
     },
+    ground: (x: number, z: number) => terrain.sample(x, z),
     blades: () => grass.drawn(),
     view: () => ({ p: camera.position.toArray(), t: rig.controls.target.toArray() }),
     grabbed: () => physics.isGrabbed(),

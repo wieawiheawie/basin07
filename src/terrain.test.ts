@@ -42,3 +42,17 @@ describe("digging", () => {
     expect(t.sample(2, 2)).toBeGreaterThan(0.03);
   });
 });
+
+describe("dig, undo and slumping", () => {
+  it("undo restores heights and slopes stay stable", () => {
+    const t = createTerrain();
+    const before = t.snapshot();
+    for (let i = 0; i < 80; i += 1) t.brush("dig", -3, 3, 1, 0.08);
+    expect(t.sample(-3, 3)).toBeLessThan(before[0]! + 10);
+    expect(t.delta(-3, 3)).toBeLessThan(-0.1);
+    // dug soil goes somewhere: the rim is higher than it started
+    expect(t.delta(-3 + 1.2, 3)).toBeGreaterThan(0);
+    t.restore(before);
+    expect(Math.abs(t.delta(-3, 3))).toBeLessThan(1e-6);
+  });
+});

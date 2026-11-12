@@ -5,6 +5,8 @@ export interface CameraRig {
   controls: OrbitControls;
   update(dt: number): void;
   reset(): void;
+  /** Glide the view to look at a point on the ground. */
+  focus(point: THREE.Vector3): void;
   /** Press or release a virtual key (used by the on-screen camera pad). */
   press(code: string, down: boolean): void;
 }
@@ -45,6 +47,10 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
   window.addEventListener("keyup", (event) => keys.delete(event.code));
   window.addEventListener("blur", () => keys.clear());
 
+  let focusPoint: THREE.Vector3 | null = null;
+  const glide = new THREE.Vector3();
+  let smoothForward = 0;
+  let smoothRight = 0;
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
   const offset = new THREE.Vector3();
@@ -66,6 +72,9 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
   return {
     controls,
     reset,
+    focus(point: THREE.Vector3): void {
+      focusPoint = point.clone().setY(Math.max(0, point.y));
+    },
     press(code: string, down: boolean): void {
       if (down) keys.add(code);
       else keys.delete(code);
@@ -76,8 +85,21 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
       const dist = offset.length();
       const fast = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 2.2 : 1;
 
-      const moveForward = down("KeyW", "ArrowUp") - down("KeyS", "ArrowDown");
-      const moveRight = down("KeyD", "ArrowRight") - down("KeyA", "ArrowLeft");
+      // Movement eases in and out instead of starting and stopping instantly.
+      const ease = 1 - Math.exp(-12 * dt);
+      smoothForward += (down("KeyW", "ArrowUp") - down("KeyS", "ArrowDown") - smoothForward) * ease;
+      smoothRight += (down("KeyD", "ArrowRight") - down("KeyA", "ArrowLeft") - smoothRight) * ease;
+      const moveForward = Math.abs(smoothForward) < 0.01 ? 0 : smoothForward;
+      const moveRight = Math.abs(smoothRight) < 0.01 ? 0 : smoothRight;
+      if (focusPoint) {
+        if (moveForward !== 0 || moveRight !== 0 || keys.size > 0) focusPoint = null;
+        else {
+          glide.copy(focusPoint).sub(controls.target).multiplyScalar(1 - Math.exp(-7 * dt));
+          controls.target.add(glide);
+          camera.position.add(glide);
+          if (glide.lengthSq() < 1e-6) focusPoint = null;
+        }
+      }
       if (moveForward !== 0 || moveRight !== 0) {
         forward.copy(offset).multiplyScalar(-1).setY(0).normalize();
         right.crossVectors(forward, UP);

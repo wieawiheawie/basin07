@@ -10,6 +10,9 @@ export interface UiHandlers {
   toggleNight(): void;
   toggleStats(): void;
   resetView(): void;
+  undo(): void;
+  resetGround(): void;
+  setSound(on: boolean): void;
   /** Press or release a virtual keyboard key (drives the on-screen camera pad). */
   press(code: string, down: boolean): void;
 }
@@ -70,6 +73,7 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
       <div class="brush" id="u-brush" hidden>
         <label>Size <input id="u-size" type="range" min="0.5" max="4" step="0.25" aria-label="Brush size" /></label>
         <label>Strength <input id="u-str" type="range" min="0.4" max="3" step="0.2" aria-label="Brush strength" /></label>
+        <button id="u-undo" aria-label="Undo last stroke" title="Undo (Ctrl+Z)">Undo</button>
       </div>
       <div class="tools" id="u-tools" role="toolbar" aria-label="Tools">
         ${(["move", "dig", "fill"] as Tool[])
@@ -87,6 +91,8 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
       </div>
       <div class="row"><span>Time of day</span><button class="wide" id="u-night" aria-pressed="false">Day</button></div>
       <div class="row"><span>Camera</span><button class="wide" id="u-reset">Reset view</button></div>
+      <div class="row"><span>Sound</span><button class="wide" id="u-sound" aria-pressed="true">On</button></div>
+      <div class="row"><span>Ground</span><button class="wide" id="u-ground">Reset ground</button></div>
       <div class="row"><span>Stats</span><button class="wide" id="u-stats">Show / hide</button></div>
       <button class="close" data-close aria-label="Close">Close</button>
     </div>
@@ -94,11 +100,11 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
     <div class="panel" id="u-helpbox" role="dialog" aria-label="Controls" hidden>
       <h2>Controls</h2>
       <h3>Touch</h3>
-      <p>Drag a crate to carry it. Drag the ground to look around. Pinch to zoom, two fingers to move. In Dig or Fill, one finger edits the ground — switch to Move to look around, or use the camera buttons.</p>
+      <p>Drag a crate to carry it. Drag the ground to look around. Double-tap the ground to fly there. Pinch to zoom, two fingers to move. In Dig or Fill, one finger edits the ground — switch to Move to look around, or use the camera buttons.</p>
       <h3>Mouse &amp; trackpad</h3>
-      <p>Drag to orbit or carry a crate. Scroll or pinch to zoom. Right-drag or Shift-drag to move. In Dig or Fill: drag to edit, or just hover and hold <kbd>Space</kbd> — no click needed.</p>
+      <p>Drag to orbit or carry a crate. Scroll or pinch to zoom. Right-drag or Shift-drag to move. Double-click the ground to fly there. In Dig or Fill: drag to edit, or just hover and hold <kbd>Space</kbd> — no click needed.</p>
       <h3>Keyboard</h3>
-      <p><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> tools · <kbd>W A S D</kbd> or arrows move · <kbd>Q</kbd> <kbd>E</kbd> rotate · <kbd>R</kbd> <kbd>F</kbd> tilt · <kbd>Z</kbd> <kbd>X</kbd> zoom · <kbd>[</kbd> <kbd>]</kbd> brush · <kbd>Space</kbd> dig at the pointer (or screen centre) · <kbd>V</kbd> reset · <kbd>N</kbd> day/night · <kbd>G</kbd> quality · <kbd>F3</kbd> stats · <kbd>H</kbd> this help</p>
+      <p><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> tools · <kbd>W A S D</kbd> or arrows move · <kbd>Q</kbd> <kbd>E</kbd> rotate · <kbd>R</kbd> <kbd>F</kbd> tilt · <kbd>Z</kbd> <kbd>X</kbd> zoom · <kbd>[</kbd> <kbd>]</kbd> brush · <kbd>T</kbd> next tool · <kbd>Alt</kbd> flips dig/fill · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Space</kbd> dig at the pointer (or screen centre) · <kbd>V</kbd> reset · <kbd>N</kbd> day/night · <kbd>G</kbd> quality · <kbd>F3</kbd> stats · <kbd>H</kbd> this help</p>
       <button class="close" data-close aria-label="Close">Close</button>
     </div>
     <div class="toast" id="u-toast" role="status" aria-live="polite"></div>`;
@@ -127,8 +133,8 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
 
   const hints: Record<Tool, string> = {
     move: coarse ? "Drag a crate to carry it · drag the ground to look around" : "Drag a crate · drag the ground to orbit · scroll to zoom",
-    dig: coarse ? "Drag to dig · switch to Move to look around" : "Drag or hold Space to dig · [ ] changes brush size",
-    fill: coarse ? "Drag to build the ground up" : "Drag or hold Space to build up · [ ] changes brush size"
+    dig: coarse ? "Drag to dig · switch to Move to look around" : "Drag or hold Space to dig · Alt fills · Ctrl+Z undoes · [ ] brush size",
+    fill: coarse ? "Drag to build the ground up" : "Drag or hold Space to build up · Alt digs · Ctrl+Z undoes · [ ] brush size"
   };
   let hintTimer = 0;
   function showHint(tool: Tool): void {
@@ -213,6 +219,31 @@ export function createUi(handlers: UiHandlers, initial: { tool: Tool; radius: nu
   night.addEventListener("click", () => handlers.toggleNight());
   $("u-reset").addEventListener("click", () => handlers.resetView());
   $("u-stats").addEventListener("click", () => handlers.toggleStats());
+  $("u-undo").addEventListener("click", () => handlers.undo());
+  $("u-ground").addEventListener("click", () => handlers.resetGround());
+  const soundButton = $("u-sound");
+  let soundOn = true;
+  try {
+    soundOn = localStorage.getItem("deskbound.sound") !== "0";
+  } catch {
+    /* storage unavailable */
+  }
+  const showSound = (): void => {
+    soundButton.textContent = soundOn ? "On" : "Off";
+    soundButton.setAttribute("aria-pressed", String(soundOn));
+  };
+  showSound();
+  handlers.setSound(soundOn);
+  soundButton.addEventListener("click", () => {
+    soundOn = !soundOn;
+    showSound();
+    handlers.setSound(soundOn);
+    try {
+      localStorage.setItem("deskbound.sound", soundOn ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  });
 
   let toastTimer = 0;
   const toastEl = $("u-toast");
