@@ -147,6 +147,13 @@ async function start(): Promise<void> {
       const rect = canvas.getBoundingClientRect();
       return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
     },
+    edit: (kind: "dig" | "fill", x: number, z: number, r: number, n: number) => {
+      let rect = { x0: 0, x1: 0, z0: 0, z1: 0 };
+      for (let i = 0; i < n; i += 1) rect = terrain.brush(kind, x, z, r, 0.05);
+      physics.updateTerrain();
+      grass.rebuildRegion(rect, terrain.sample, terrain.delta);
+      sun.shadow.needsUpdate = true;
+    },
     blades: () => grass.drawn(),
     view: () => ({ p: camera.position.toArray(), t: rig.controls.target.toArray() }),
     grabbed: () => physics.isGrabbed(),

@@ -240,7 +240,7 @@ export async function createGrass(
   };
   const byte = (v: number): number => Math.max(0, Math.min(255, Math.round(v * 255)));
 
-  interface Chunk { roots: Float32Array; shapes: Uint8Array; minX: number; maxX: number; minZ: number; maxZ: number; mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; lite: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
+  interface Chunk { roots: Float32Array; shapes: Uint8Array; baseShapes: Uint8Array; minX: number; maxX: number; minZ: number; maxZ: number; mesh: THREE.Mesh; geometry: THREE.InstancedBufferGeometry; lite: THREE.InstancedBufferGeometry; centre: THREE.Vector3; lod: number }
   const chunks: Chunk[] = [];
   for (let cx = 0; cx < CHUNKS; cx += 1) {
     for (let cz = 0; cz < CHUNKS; cz += 1) {
@@ -303,7 +303,7 @@ export async function createGrass(
       // Grass takes its shadow from the analytic box shadow above, not from the shadow map (saves a lot of pixel work).
       mesh.receiveShadow = false;
       mesh.castShadow = false;
-      const chunk: Chunk = { roots, shapes, minX: x0, maxX: x0 + chunkSize, minZ: z0, maxZ: z0 + chunkSize, mesh, geometry, lite, centre, lod: 1 };
+      const chunk: Chunk = { roots, shapes, baseShapes: shapes.slice(), minX: x0, maxX: x0 + chunkSize, minZ: z0, maxZ: z0 + chunkSize, mesh, geometry, lite, centre, lod: 1 };
       mesh.onBeforeRender = () => {
         uniforms.uLod.value = chunk.lod;
       };
@@ -335,11 +335,11 @@ export async function createGrass(
           const z = roots[i * 3 + 2]!;
           if (x < rect.x0 || x > rect.x1 || z < rect.z0 || z > rect.z1) continue;
           roots[i * 3 + 1] = heightAt(x, z) - 0.015;
-          // Blades whose ground was dug away or buried are gone for good.
-          if (Math.abs(deltaAt(x, z)) > 0.05) {
-            shapes[i * 4] = 0;
-            shapes[i * 4 + 1] = 0;
-          }
+          // Blades shrink away as the ground under them is dug out or buried, and return if it is put back.
+          const a = Math.abs(deltaAt(x, z));
+          const keep = 1 - Math.min(1, Math.max(0, (a - 0.02) / 0.14)) ** 1.5;
+          shapes[i * 4] = Math.round(chunk.baseShapes[i * 4]! * keep);
+          shapes[i * 4 + 1] = Math.round(chunk.baseShapes[i * 4 + 1]! * keep);
           changed = true;
         }
         if (changed) {

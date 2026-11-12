@@ -139,10 +139,13 @@ export function createTerrain(): Terrain {
   geometry.setAttribute("position", positionAttribute);
   geometry.setAttribute("color", colourAttribute);
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.computeVertexNormals();
+  const normals = new Float32Array(side * side * 3);
+  const normalAttribute = new THREE.BufferAttribute(normals, 3);
+  normalAttribute.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute("normal", normalAttribute);
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.5, 0), MESH_HALF * 1.5);
 
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true });
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.castShadow = false;
@@ -162,45 +165,76 @@ export function createTerrain(): Terrain {
     return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (b - d) * (1 - v) + (c - d) * (1 - u);
   }
 
-  const dug = new THREE.Color("#3a2a1a");
+  /** Smooth normals from height differences, so edited ground shades softly instead of in facets. */
+  function updateNormals(ix0: number, ix1: number, iz0: number, iz1: number): void {
+    for (let iz = Math.max(0, iz0); iz <= Math.min(SEGMENTS, iz1); iz += 1) {
+      for (let ix = Math.max(0, ix0); ix <= Math.min(SEGMENTS, ix1); ix += 1) {
+        const xm = Math.max(ix - 1, 0);
+        const xp = Math.min(ix + 1, SEGMENTS);
+        const zm = Math.max(iz - 1, 0);
+        const zp = Math.min(iz + 1, SEGMENTS);
+        const nx = -(heights[xp * side + iz]! - heights[xm * side + iz]!) / ((xp - xm) * cell);
+        const nz = -(heights[ix * side + zp]! - heights[ix * side + zm]!) / ((zp - zm) * cell);
+        const inv = 1 / Math.hypot(nx, 1, nz);
+        const i = (iz * side + ix) * 3;
+        normals[i] = nx * inv;
+        normals[i + 1] = inv;
+        normals[i + 2] = nz * inv;
+      }
+    }
+    normalAttribute.needsUpdate = true;
+  }
+  updateNormals(0, SEGMENTS, 0, SEGMENTS);
+
+  const dugColour = new THREE.Color("#3d2c1c");
+  const deepColour = new THREE.Color("#241912");
+  const filledColour = new THREE.Color("#6f5535");
   const mixed = new THREE.Color();
 
+  /** Disturbed ground becomes soil: dark and damp where dug (darker with depth), loose and tan where built up, with a little grain. */
+  function paint(ix: number, iz: number): void {
+    const hi = ix * side + iz;
+    const i = iz * side + ix;
+    const d = heights[hi]! - base[hi]!;
+    mixed.setRGB(baseColours[i * 3]!, baseColours[i * 3 + 1]!, baseColours[i * 3 + 2]!);
+    const a = Math.abs(d);
+    if (a > 0.004) {
+      const w = THREE.MathUtils.smoothstep(a, 0.004, 0.1);
+      if (d < 0) {
+        mixed.lerp(dugColour, w);
+        mixed.lerp(deepColour, THREE.MathUtils.smoothstep(-d, 0.2, 0.9));
+      } else mixed.lerp(filledColour, w);
+      const grain = 1 + (valueNoise(ix * 1.7, iz * 1.7) - 0.5) * 0.3 * w;
+      mixed.multiplyScalar(grain);
+    }
+    colours[i * 3] = mixed.r;
+    colours[i * 3 + 1] = mixed.g;
+    colours[i * 3 + 2] = mixed.b;
+  }
+
   function brush(kind: BrushKind, x: number, z: number, radius: number, amount: number): Rect {
-    const reach = radius * 1.7;
+    const reach = radius * 1.8;
     const ix0 = Math.max(0, Math.floor((x - reach + MESH_HALF) / cell));
     const ix1 = Math.min(SEGMENTS, Math.ceil((x + reach + MESH_HALF) / cell));
     const iz0 = Math.max(0, Math.floor((z - reach + MESH_HALF) / cell));
     const iz1 = Math.min(SEGMENTS, Math.ceil((z + reach + MESH_HALF) / cell));
     for (let iz = iz0; iz <= iz1; iz += 1) {
       for (let ix = ix0; ix <= ix1; ix += 1) {
-        const wx = -MESH_HALF + ix * cell;
-        const wz = -MESH_HALF + iz * cell;
-        const d = Math.hypot(wx - x, wz - z) / radius;
-        if (d >= 1.7) continue;
-        const core = d < 1 ? 0.5 * (1 + Math.cos(Math.PI * d)) : 0;
-        let change = 0;
-        if (kind === "dig") {
-          // Digging also throws a little soil up around the edge of the hole.
-          const spoil = d >= 1 ? Math.sin((Math.PI * (d - 1)) / 0.7) ** 2 : 0;
-          change = -amount * core + amount * 0.22 * spoil;
-        } else {
-          change = amount * core;
-        }
-        if (change === 0) continue;
+        const d = Math.hypot(-MESH_HALF + ix * cell - x, -MESH_HALF + iz * cell - z) / radius;
+        if (d >= 1.8) continue;
+        // A flat-bottomed pit with soft walls; digging also heaps a low rim of soil just outside it.
+        const pit = 1 - THREE.MathUtils.smoothstep(d, 0.4, 1);
+        const berm = Math.exp(-(((d - 1.2) / 0.22) ** 2));
+        const change = kind === "dig" ? -amount * pit + amount * 0.14 * berm : amount * pit;
+        if (Math.abs(change) < 1e-6) continue;
         const hi = ix * side + iz;
         const h = THREE.MathUtils.clamp(heights[hi]! + change, BEDROCK, CEILING);
         heights[hi] = h;
-        const i = iz * side + ix;
-        positions[i * 3 + 1] = h;
-        // Disturbed ground turns to soil, darker the deeper it is dug.
-        const edited = THREE.MathUtils.clamp(Math.abs(h - base[hi]!) / 0.05, 0, 1);
-        const shade = 1 - THREE.MathUtils.clamp((base[hi]! - h) * 0.35, 0, 0.35);
-        mixed.setRGB(baseColours[i * 3]!, baseColours[i * 3 + 1]!, baseColours[i * 3 + 2]!).lerp(dug, edited).multiplyScalar(shade);
-        colours[i * 3] = mixed.r;
-        colours[i * 3 + 1] = mixed.g;
-        colours[i * 3 + 2] = mixed.b;
+        positions[(iz * side + ix) * 3 + 1] = h;
       }
     }
+    updateNormals(ix0 - 1, ix1 + 1, iz0 - 1, iz1 + 1);
+    for (let iz = iz0; iz <= iz1; iz += 1) for (let ix = ix0; ix <= ix1; ix += 1) paint(ix, iz);
     positionAttribute.needsUpdate = true;
     colourAttribute.needsUpdate = true;
     return { x0: x - reach, x1: x + reach, z0: z - reach, z1: z + reach };

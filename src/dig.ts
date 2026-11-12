@@ -35,22 +35,100 @@ export function createDigTool(opts: {
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
 
+  // Brush ring that hugs the ground, so you can see exactly where and how big the edit is.
+  const SEG = 72;
+  const ringPositions = new Float32Array(SEG * 2 * 3);
+  const ringGeometry = new THREE.BufferGeometry();
+  ringGeometry.setAttribute("position", new THREE.BufferAttribute(ringPositions, 3).setUsage(THREE.DynamicDrawUsage));
+  const ringIndex: number[] = [];
+  for (let i = 0; i < SEG; i += 1) {
+    const n = (i + 1) % SEG;
+    ringIndex.push(i * 2, i * 2 + 1, n * 2, n * 2, i * 2 + 1, n * 2 + 1);
+  }
+  ringGeometry.setIndex(ringIndex);
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.94, 1, 48),
-    new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.85, depthTest: false })
+    ringGeometry,
+    new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide })
   );
-  ring.rotation.x = -Math.PI / 2;
+  ring.frustumCulled = false;
   ring.renderOrder = 10;
   ring.visible = false;
   scene.add(ring);
+  function placeRing(cx: number, cz: number, r: number, pulse: number): void {
+    const inner = r * (0.94 - pulse * 0.02);
+    for (let i = 0; i < SEG; i += 1) {
+      const a = (i / SEG) * Math.PI * 2;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      const set = (k: number, rad: number): void => {
+        const px = cx + c * rad;
+        const pz = cz + s * rad;
+        ringPositions[k] = px;
+        ringPositions[k + 1] = terrain.sample(px, pz) + 0.07;
+        ringPositions[k + 2] = pz;
+      };
+      set(i * 6, inner);
+      set(i * 6 + 3, r);
+    }
+    (ringGeometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+  }
 
-  const colours: Record<Tool, string> = { move: "#ffffff", dig: "#ffb066", fill: "#8fe07a" };
+  // Flying soil while editing.
+  const MAX_SOIL = 220;
+  const soil = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), new THREE.MeshStandardMaterial({ roughness: 1 }), MAX_SOIL);
+  soil.frustumCulled = false;
+  soil.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(soil);
+  const soilPos = new Float32Array(MAX_SOIL * 3);
+  const soilVel = new Float32Array(MAX_SOIL * 3);
+  const soilLife = new Float32Array(MAX_SOIL);
+  const soilColour = new THREE.Color();
+  const dummy = new THREE.Object3D();
+  let soilNext = 0;
+  function emitSoil(x: number, y: number, z: number, r: number, kind: Tool, count: number): void {
+    for (let n = 0; n < count; n += 1) {
+      const i = soilNext;
+      soilNext = (soilNext + 1) % MAX_SOIL;
+      const a = Math.random() * Math.PI * 2;
+      const rad = Math.random() * r * 0.8;
+      soilPos.set([x + Math.cos(a) * rad, y + 0.05, z + Math.sin(a) * rad], i * 3);
+      const out = 0.4 + Math.random() * 1.2;
+      soilVel.set([Math.cos(a) * out, 1.5 + Math.random() * 2.2, Math.sin(a) * out], i * 3);
+      soilLife[i] = 0.7 + Math.random() * 0.5;
+      soilColour.set(kind === "dig" ? "#4a3322" : "#7a5e3c").multiplyScalar(0.75 + Math.random() * 0.5);
+      soil.setColorAt(i, soilColour);
+    }
+    if (soil.instanceColor) soil.instanceColor.needsUpdate = true;
+  }
+  function stepSoil(dt: number): void {
+    for (let i = 0; i < MAX_SOIL; i += 1) {
+      if (soilLife[i]! > 0) {
+        soilLife[i] = soilLife[i]! - dt;
+        soilVel[i * 3 + 1] = soilVel[i * 3 + 1]! - 9 * dt;
+        for (let k = 0; k < 3; k += 1) soilPos[i * 3 + k] = soilPos[i * 3 + k]! + soilVel[i * 3 + k]! * dt;
+        if (soilPos[i * 3 + 1]! < terrain.sample(soilPos[i * 3]!, soilPos[i * 3 + 2]!)) soilLife[i] = 0;
+        dummy.position.set(soilPos[i * 3]!, soilPos[i * 3 + 1]!, soilPos[i * 3 + 2]!);
+        dummy.scale.setScalar(Math.min(1, soilLife[i]! * 3));
+        dummy.rotation.set(soilLife[i]! * 9, soilLife[i]! * 7, 0);
+      } else {
+        dummy.position.set(0, -50, 0);
+        dummy.scale.setScalar(0);
+      }
+      dummy.updateMatrix();
+      soil.setMatrixAt(i, dummy.matrix);
+    }
+    soil.instanceMatrix.needsUpdate = true;
+  }
+  let emitCarry = 0;
+
+  const colours: Record<Tool, string> = { move: "#ffffff", dig: "#ffb066", fill: "#9be37e" };
 
   function setTool(next: Tool): void {
     tool = next;
     active = false;
     ring.visible = false;
     (ring.material as THREE.MeshBasicMaterial).color.set(colours[next]);
+    if (next === "dig" || next === "fill") soil.visible = true;
     canvas.classList.toggle("dig", next === "dig");
     canvas.classList.toggle("fill", next === "fill");
     opts.onChange?.(next);
@@ -140,8 +218,7 @@ export function createDigTool(opts: {
         const hit = terrain.raycast(ray.ray);
         ring.visible = hit !== null && (lastType !== "touch" || active);
         if (hit) {
-          ring.position.set(hit.x, hit.y + 0.06, hit.z);
-          ring.scale.setScalar(brushState.radius);
+          placeRing(hit.x, hit.z, brushState.radius, digging ? 1 : 0);
           if (digging) {
             const r = terrain.brush(tool, hit.x, hit.z, brushState.radius, brushState.strength * Math.min(dt, 0.05));
             dirty.x0 = Math.min(dirty.x0, r.x0);
@@ -151,21 +228,24 @@ export function createDigTool(opts: {
             hasDirty = true;
             physicsStale = true;
             changed = true;
+            emitCarry += dt * 70 * Math.min(2, brushState.radius);
+            const n = Math.floor(emitCarry);
+            emitCarry -= n;
+            emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, tool, n);
           }
         }
       }
+      stepSoil(dt);
       sincePhysics += dt;
-      // Collider rebuilds are throttled while digging and flushed once the drag ends.
-      if (physicsStale && (!(active || keyDig) || sincePhysics > 0.1)) {
-        physics.updateTerrain();
+      // Collider and grass updates are throttled while editing and flushed once the stroke ends.
+      if ((physicsStale || hasDirty) && (!(active || keyDig) || sincePhysics > 0.1)) {
+        if (physicsStale) physics.updateTerrain();
+        if (hasDirty) grass.rebuildRegion(dirty, terrain.sample, terrain.delta);
         physicsStale = false;
-        sincePhysics = 0;
-      }
-      if (hasDirty && !(active || keyDig)) {
-        grass.rebuildRegion(dirty, terrain.sample, terrain.delta);
+        hasDirty = false;
         dirty.x0 = dirty.z0 = Infinity;
         dirty.x1 = dirty.z1 = -Infinity;
-        hasDirty = false;
+        sincePhysics = 0;
       }
       return changed || physicsStale;
     }
