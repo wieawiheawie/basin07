@@ -11,6 +11,7 @@ import { createProps, syncProps } from "./props";
 import { PRESET_ORDER, presets, type PresetName } from "./quality";
 import { createTable } from "./table";
 import { createTerrain, HALF } from "./terrain";
+import { createSound } from "./sound";
 import { createUi, type Ui } from "./ui";
 
 const params = new URLSearchParams(location.search);
@@ -64,11 +65,16 @@ async function start(): Promise<void> {
   const props = createProps(scene, physics, Number(params.get("props") ?? 1));
   let dig: ReturnType<typeof createDigTool> | null = null;
   setupGrab({ canvas, camera, physics, props, limit: LIMIT, enabled: () => (dig?.tool() ?? "move") === "move" });
+  const sfx = createSound();
+  const unlock = (): void => sfx.unlock();
+  window.addEventListener("pointerdown", unlock, { once: true });
+  window.addEventListener("keydown", unlock, { once: true });
   let ui: Ui | null = null;
   dig = createDigTool({
     canvas, camera, scene, terrain, physics, grass,
     onChange: (tool) => ui?.setTool(tool),
-    onBrush: (radius) => ui?.setRadius(radius)
+    onBrush: (radius) => ui?.setRadius(radius),
+    onScoop: (kind, radius, depth) => sfx.scoop(kind, radius, depth)
   });
   loading?.remove();
 
@@ -104,6 +110,7 @@ async function start(): Promise<void> {
   const perf = createPerfOverlay(renderer, () => `preset ${preset.name}  blades ${(grass.drawn() / 1000).toFixed(0)}k  quality ${grass.quality().toFixed(2)}  pixel ratio ${renderer.getPixelRatio().toFixed(2)}`);
   const toggleNight = (): void => {
     atmosphere.toggle();
+    sfx.setNight(atmosphere.isNight());
     ui?.setNight(atmosphere.isNight());
     ui?.toast(atmosphere.isNight() ? "Night" : "Day");
   };
@@ -127,9 +134,7 @@ async function start(): Promise<void> {
       resetView: () => rig.reset(),
       undo: () => dig?.undo(),
       resetGround: () => dig?.resetGround(),
-      setSound: (on) => {
-        if (dig) dig.sound.enabled = on;
-      },
+      setSound: (on) => sfx.setEnabled(on),
       press: (code, down) => rig.press(code, down)
     },
     { tool: "move", radius: dig.brush.radius, strength: dig.brush.strength, preset: preset.name }
@@ -142,6 +147,12 @@ async function start(): Promise<void> {
       perf.toggle();
     } else if (event.code === "KeyG") choosePreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset.name) + 1) % PRESET_ORDER.length]!);
   });
+
+  document.getElementById("ui")?.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("button")) sfx.click();
+  });
+  let wasGrabbed = false;
+  const lastVy = props.map(() => 0);
 
   // Double-click or double-tap the ground (in Move) to glide the camera there.
   const aimRay = new THREE.Raycaster();
@@ -203,6 +214,16 @@ async function start(): Promise<void> {
     const dt = clock.getDelta();
     physics.step(dt);
     syncProps(props);
+    sfx.update(dt);
+    const grabbedNow = physics.isGrabbed();
+    if (grabbedNow && !wasGrabbed) sfx.grab();
+    wasGrabbed = grabbedNow;
+    props.forEach((prop, i) => {
+      // A sharp upward change in vertical speed means the crate just hit something.
+      const vy = prop.body.velocity.y;
+      if (lastVy[i]! < -1.4 && vy - lastVy[i]! > 1.2) sfx.knock(-lastVy[i]!);
+      lastVy[i] = vy;
+    });
 
     let moved = shadowFrames > 0 || (dig?.update(dt) ?? false);
     props.forEach((prop, i) => {

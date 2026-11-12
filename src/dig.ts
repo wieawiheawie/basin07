@@ -13,7 +13,6 @@ export interface DigTool {
   undo(): void;
   /** Put the ground back the way it was generated (can be undone). */
   resetGround(): void;
-  sound: { enabled: boolean };
   /** Call every frame. Returns true when the ground changed this frame. */
   update(dt: number): boolean;
 }
@@ -28,6 +27,7 @@ export function createDigTool(opts: {
   grass: Grass;
   onChange?: (tool: Tool) => void;
   onBrush?: (radius: number) => void;
+  onScoop?: (kind: "dig" | "fill", radius: number, depth: number) => void;
 }): DigTool {
   const { canvas, camera, scene, terrain, physics, grass } = opts;
   let tool: Tool = "move";
@@ -130,41 +130,6 @@ export function createDigTool(opts: {
       soil.setMatrixAt(i, dummy.matrix);
     }
     soil.instanceMatrix.needsUpdate = true;
-  }
-
-  // A soft, low thud for each scoop, made from filtered noise (no audio files needed).
-  const sound = { enabled: true };
-  let audio: AudioContext | null = null;
-  let noise: AudioBuffer | null = null;
-  function thud(kind: Tool, size: number): void {
-    if (!sound.enabled) return;
-    try {
-      audio ??= new AudioContext();
-      if (audio.state === "suspended") void audio.resume();
-      if (!noise) {
-        noise = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.25), audio.sampleRate);
-        const data = noise.getChannelData(0);
-        let last = 0;
-        for (let i = 0; i < data.length; i += 1) {
-          last = (last + 0.04 * (Math.random() * 2 - 1)) / 1.04;
-          data[i] = last * 8;
-        }
-      }
-      const source = audio.createBufferSource();
-      source.buffer = noise;
-      const filter = audio.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.value = (kind === "dig" ? 240 : 520) + Math.random() * 140;
-      const gain = audio.createGain();
-      const t = audio.currentTime;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.28 + size * 0.06, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-      source.connect(filter).connect(gain).connect(audio.destination);
-      source.start(t);
-    } catch {
-      /* audio unavailable */
-    }
   }
 
   const history: Float32Array[] = [];
@@ -294,7 +259,6 @@ export function createDigTool(opts: {
     setTool,
     undo,
     resetGround,
-    sound,
     update(dt: number): boolean {
       let changed = pendingChange;
       pendingChange = false;
@@ -330,7 +294,7 @@ export function createDigTool(opts: {
             if (index !== scoopIndex) {
               scoopIndex = index;
               emitSoil(hit.x, terrain.sample(hit.x, hit.z), hit.z, brushState.radius, kind, Math.round(8 + brushState.radius * 7));
-              thud(kind, brushState.radius);
+              opts.onScoop?.(kind, brushState.radius, -terrain.delta(hit.x, hit.z));
             }
             if (phase < SCOOP) {
               const pulse = Math.sin((Math.PI * phase) / SCOOP) * (Math.PI / 2) * (CYCLE / SCOOP);
