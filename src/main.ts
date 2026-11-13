@@ -22,7 +22,7 @@ const SUN_OFFSET = new THREE.Vector3(14, 22, 10);
 async function start(): Promise<void> {
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const loading = document.getElementById("loading");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get("q") !== "low", powerPreference: "high-performance" });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get("q") === "high", powerPreference: "high-performance" });
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -86,17 +86,26 @@ async function start(): Promise<void> {
   const all = presets(window.devicePixelRatio);
   const fixedBlades = params.has("blades");
   let preset = all[(params.get("q") as PresetName) in all ? (params.get("q") as PresetName) : "medium"];
-  let slowSeen = false;
+  // Adaptive quality (see the end of the loop): current resolution scale and grass amount, never above the preset.
+  let resScale = preset.pixelRatio;
+  let grassScale = preset.grass;
+  const frameTimes: number[] = [];
+  let lastChange = 0;
+  let calmChecks = 0;
+  let shrinkResolution = true;
   let shadowFrames = 3;
   function applyPreset(next: PresetName): void {
     preset = all[next];
-    renderer.setPixelRatio(preset.pixelRatio);
+    resScale = preset.pixelRatio;
+    grassScale = preset.grass;
+    frameTimes.length = 0;
+    calmChecks = 0;
+    renderer.setPixelRatio(resScale);
     sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
     atmosphere.setShafts(preset.shafts);
     grass.setQuality(fixedBlades ? Number(params.get("blades")) / MAX_BLADES : preset.grass);
-    slowSeen = false;
     shadowFrames = 3;
     resize();
   }
@@ -179,6 +188,7 @@ async function start(): Promise<void> {
       sun.shadow.needsUpdate = true;
     },
     ground: (x: number, z: number) => terrain.sample(x, z),
+    info: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries, tex: renderer.info.memory.textures }),
     blades: () => grass.drawn(),
     view: () => ({ p: camera.position.toArray(), t: rig.controls.target.toArray() }),
     grabbed: () => physics.isGrabbed(),
@@ -195,8 +205,7 @@ async function start(): Promise<void> {
   const lastPos = props.map((p) => p.body.position.clone());
   const lastQuat = props.map((p) => p.body.quaternion.clone());
   const clock = new THREE.Clock();
-  let frames = 0;
-  let accum = 0;
+  let lastFrame = 0;
 
   const fps = createFpsCounter();
   renderer.setAnimationLoop((now) => {
@@ -235,24 +244,42 @@ async function start(): Promise<void> {
     renderer.render(scene, camera);
     perf.frame(dt);
 
-    // Adaptive quality: shed blades fast when slow, then drop resolution; grow back only if it was never slow.
+    // Adaptive quality, driven by real frame intervals. When frames take too long it lowers the render resolution and the
+    // grass amount in turn, in small steps; it only raises them again after several calm seconds, so it doesn't flap.
     if (!fixedBlades) {
-      frames += 1;
-      accum += dt;
-      if (frames === 30) {
-        const avg = accum / frames;
-        if (avg > 1 / 45) {
-          slowSeen = true;
-          if (grass.quality() > 0.2) grass.setQuality(grass.quality() * 0.7);
-          else if (renderer.getPixelRatio() > 0.7) {
-            renderer.setPixelRatio(0.7);
+      if (lastFrame > 0 && now - lastFrame < 6000) frameTimes.push(now - lastFrame);
+      lastFrame = now;
+      // Judge after 24 frames, or sooner when frames are so slow that 24 would take seconds.
+      if (frameTimes.length >= 24 || (frameTimes.length >= 3 && frameTimes.reduce((s, v) => s + v, 0) > 1500)) {
+        const sorted = frameTimes.slice().sort((x, y) => x - y);
+        const median = sorted[sorted.length >> 1]!;
+        frameTimes.length = 0;
+        const since = now - lastChange;
+        if (median > 19 && since > 500) {
+          calmChecks = 0;
+          lastChange = now;
+          if (shrinkResolution && resScale > 0.5) resScale = Math.max(0.5, resScale * 0.9);
+          else grassScale = Math.max(0.12, grassScale * 0.85);
+          shrinkResolution = !shrinkResolution;
+          if (Math.abs(renderer.getPixelRatio() - resScale) > 0.02) {
+            renderer.setPixelRatio(resScale);
             resize();
           }
-        } else if (!slowSeen && avg < 1 / 58 && grass.quality() < preset.grass) {
-          grass.setQuality(Math.min(preset.grass, grass.quality() * 1.2));
-        }
-        frames = 0;
-        accum = 0;
+          grass.setQuality(grassScale);
+        } else if (median < 14.5 && since > 4000) {
+          calmChecks += 1;
+          if (calmChecks >= 3 && (resScale < preset.pixelRatio || grassScale < preset.grass)) {
+            calmChecks = 0;
+            lastChange = now;
+            if (grassScale < preset.grass) grassScale = Math.min(preset.grass, grassScale * 1.1);
+            else resScale = Math.min(preset.pixelRatio, resScale * 1.05);
+            if (Math.abs(renderer.getPixelRatio() - resScale) > 0.02) {
+              renderer.setPixelRatio(resScale);
+              resize();
+            }
+            grass.setQuality(grassScale);
+          }
+        } else if (median >= 14.5) calmChecks = 0;
       }
     }
   });
