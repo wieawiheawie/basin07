@@ -3,6 +3,7 @@ import { createAtmosphere } from "./atmosphere";
 import { createCameraRig } from "./camera";
 import "./style.css";
 import { createDigTool } from "./dig";
+import { createFpsCounter } from "./fps";
 import { createGrass, type Interactor } from "./grass";
 import { setupGrab } from "./input";
 import { createPerfOverlay } from "./perf";
@@ -197,7 +198,9 @@ async function start(): Promise<void> {
   let frames = 0;
   let accum = 0;
 
-  renderer.setAnimationLoop(() => {
+  const fps = createFpsCounter();
+  renderer.setAnimationLoop((now) => {
+    fps.frame(now);
     const dt = clock.getDelta();
     physics.step(dt);
     syncProps(props);
